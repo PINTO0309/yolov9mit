@@ -42,7 +42,9 @@ To get started using YOLOv9's developer mode, we recommand you clone this reposi
 ```shell
 git clone git@github.com:WongKinYiu/YOLO.git
 cd YOLO
-pip install -r requirements.txt
+
+uv sync
+source .venv/bin/activate
 ```
 
 ## Features
