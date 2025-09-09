@@ -14,8 +14,10 @@ from torch.utils.data import DataLoader, Dataset
 from yolo.config.config import DataConfig, DatasetConfig
 from yolo.tools.data_augmentation import *
 from yolo.tools.data_augmentation import AugmentationComposer
+from omegaconf import DictConfig
 from yolo.tools.dataset_preparation import prepare_dataset
 from yolo.utils.dataset_utils import (
+    convert_bboxes,
     create_image_metadata,
     locate_label_paths,
     scale_segmentation,
@@ -33,7 +35,18 @@ class YoloDataset(Dataset):
         self.dynamic_shape = getattr(data_cfg, "dynamic_shape", False)
         self.base_size = mean(self.image_size)
 
-        transforms = [eval(aug)(prob) for aug, prob in augment_cfg.items()]
+        transforms = []
+        for aug, params in augment_cfg.items():
+            cls = eval(aug)
+            # If params is a scalar (e.g., 0.5), pass as positional argument
+            if isinstance(params, (int, float)):
+                transforms.append(cls(params))
+            # If params is a mapping (OmegaConf DictConfig or dict), expand as kwargs
+            elif isinstance(params, (dict, DictConfig)):
+                transforms.append(cls(**dict(params)))
+            # Fallback: pass through directly
+            else:
+                transforms.append(cls(params))
         self.transform = AugmentationComposer(transforms, self.image_size, self.base_size)
         self.transform.get_more_data = self.get_more_data
         self.img_paths, self.bboxes, self.ratios = tensorlize(self.load_data(Path(dataset_cfg.path), phase_name))
@@ -116,7 +129,8 @@ class YoloDataset(Dataset):
                     image_seg_annotations = []
                 else:
                     with open(label_path, "r") as file:
-                        image_seg_annotations = [list(map(float, line.strip().split())) for line in file]
+                        annotations = [list(map(float, line.strip().split())) for line in file]
+                        image_seg_annotations = convert_bboxes(annotations)
             else:
                 image_seg_annotations = []
 

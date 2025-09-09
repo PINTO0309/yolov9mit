@@ -12,10 +12,19 @@ data:
   shuffle: True
   pin_memory: True
   data_augment:
-    Mosaic: 1
+    # Mosaic: 1
     # MixUp: 1
     # HorizontalFlip: 0.5
-    RandomCrop: 1
+    RandomCrop: 0.5
+    RandomBrightness:
+      prob: 0.5
+      factor_range: [0.7, 1.3]
+    RandomContrast:
+      prob: 0.5
+      factor_range: [0.7, 1.3]
+    RandomSaturation:
+      prob: 0.5
+      factor_range: [0.7, 1.3]
     RemoveOutliers: 1e-8
 
 optimizer:

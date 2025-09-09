@@ -68,7 +68,11 @@ class YOLORichProgressBar(RichProgressBar):
             self._reset_progress_bar_ids()
             reconfigure(**self._console_kwargs)
             self._console = Console()
-            self._console.clear_live()
+            # Guard against empty live stack in some rich versions
+            try:
+                self._console.clear_live()
+            except IndexError:
+                pass
             self.progress = YOLOCustomProgress(
                 *self.configure_columns(trainer),
                 auto_refresh=False,
@@ -107,7 +111,8 @@ class YOLORichProgressBar(RichProgressBar):
         epoch_descript = "[cyan]Train [white]|"
         batch_descript = "[green]Train [white]|"
         metrics = self.get_metrics(trainer, pl_module)
-        metrics.pop("v_num")
+        # Some Lightning versions or logger configs may omit 'v_num'
+        metrics.pop("v_num", None)
         for metrics_name, metrics_val in metrics.items():
             if "Loss_step" in metrics_name:
                 epoch_descript += f"{metrics_name.removesuffix('_step').split('/')[1]: ^9}|"
@@ -175,7 +180,6 @@ class YOLORichModelSummary(RichModelSummary):
         total_parameters: int,
         trainable_parameters: int,
         model_size: float,
-        total_training_modes: Dict[str, int],
         **summarize_kwargs: Any,
     ) -> None:
         from lightning.pytorch.utilities.model_summary import get_human_readable_count
@@ -215,8 +219,13 @@ class YOLORichModelSummary(RichModelSummary):
         grid.add_row("[bold]Non-trainable params[/]", f"{parameters[1]}")
         grid.add_row("[bold]Total params[/]", f"{parameters[2]}")
         grid.add_row("[bold]Total estimated model params size (MB)[/]", f"{parameters[3]}")
-        grid.add_row("[bold]Modules in train mode[/]", f"{total_training_modes['train']}")
-        grid.add_row("[bold]Modules in eval mode[/]", f"{total_training_modes['eval']}")
+        # Lightning versions may or may not provide total_training_modes; default safely
+        total_training_modes = summarize_kwargs.get("total_training_modes")
+        if not isinstance(total_training_modes, dict):
+            total_training_modes = {"train": 0, "eval": 0}
+
+        grid.add_row("[bold]Modules in train mode[/]", f"{total_training_modes.get('train', 0)}")
+        grid.add_row("[bold]Modules in eval mode[/]", f"{total_training_modes.get('eval', 0)}")
 
         console.print(grid)
 

@@ -40,9 +40,10 @@ yolo task.data.source=0 # source could be a single file, video, image folder, we
 To get started using YOLOv9's developer mode, we recommand you clone this repository and install the required dependencies:
 
 ```shell
-git clone git@github.com:WongKinYiu/YOLO.git
-cd YOLO
+git clone https://github.com/PINTO0309/yolov9mit.git
+cd yolov9mit
 
+curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 source .venv/bin/activate
 ```
@@ -64,8 +65,8 @@ To train YOLO on your machine/dataset:
 2. Run the training script:
 
 ```shell
-python yolo/lazy.py task=train dataset=** use_wandb=True
-python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c weight=False # or more args
+uv run python yolo/lazy.py task=train dataset=** use_wandb=True
+uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c weight=False # or more args
 ```
 
 ### Transfer Learning
@@ -73,7 +74,13 @@ python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c weight=False # 
 To perform transfer learning with YOLOv9:
 
 ```shell
-python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c dataset={dataset_config} device={cpu, mps, cuda}
+uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c dataset={dataset_config} device={cpu, mps, cuda}
+
+uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=16 model=v9-n dataset=wholebody34 device=cuda use_wandb=False
+uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-t dataset=wholebody34 device=cuda use_wandb=False
+uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-s dataset=wholebody34 device=cuda use_wandb=False
+uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-c dataset=wholebody34 device=cuda use_wandb=False
+uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-e dataset=wholebody34 device=cuda use_wandb=False
 ```
 
 ### Inference

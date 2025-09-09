@@ -214,3 +214,48 @@ class RandomCrop:
             boxes[:, [2, 4]] /= crop_height
 
         return image, boxes
+
+
+class RandomBrightness:
+    """Randomly adjust image brightness within a factor range."""
+
+    def __init__(self, prob: float = 0.5, factor_range=(0.7, 1.3)):
+        self.prob = prob
+        self.factor_range = factor_range
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) < self.prob:
+            low, high = self.factor_range
+            factor = torch.empty(1).uniform_(float(low), float(high)).item()
+            image = TF.adjust_brightness(image, factor)
+        return image, boxes
+
+
+class RandomContrast:
+    """Randomly adjust image contrast within a factor range."""
+
+    def __init__(self, prob: float = 0.5, factor_range=(0.7, 1.3)):
+        self.prob = prob
+        self.factor_range = factor_range
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) < self.prob:
+            low, high = self.factor_range
+            factor = torch.empty(1).uniform_(float(low), float(high)).item()
+            image = TF.adjust_contrast(image, factor)
+        return image, boxes
+
+
+class RandomSaturation:
+    """Randomly adjust image saturation within a factor range."""
+
+    def __init__(self, prob: float = 0.5, factor_range=(0.7, 1.3)):
+        self.prob = prob
+        self.factor_range = factor_range
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) < self.prob:
+            low, high = self.factor_range
+            factor = torch.empty(1).uniform_(float(low), float(high)).item()
+            image = TF.adjust_saturation(image, factor)
+        return image, boxes
