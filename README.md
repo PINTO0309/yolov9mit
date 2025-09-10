@@ -57,6 +57,56 @@ source .venv/bin/activate
 
 These are simple examples. For more customization details, please refer to [Notebooks](examples) and lower-level modifications **[HOWTO](docs/HOWTO.md)**.
 
+## YOLO format dataset structure
+
+```
+data
+└── wholebody34
+    ├── train.pache # Cache file automatically generated when training starts
+    ├── val.pache # Cache file automatically generated when training starts
+    ├── images
+    │   ├── train
+    │   │   ├── 000000000036.jpg
+    │   │   ├── 000000000077.jpg
+    │   │   ├── 000000000110.jpg
+    │   │   ├── 000000000113.jpg
+    │   │   └── 000000000165.jpg
+    │   └── val
+    │       ├── 000000000241.jpg
+    │       ├── 000000000294.jpg
+    │       ├── 000000000308.jpg
+    │       ├── 000000000322.jpg
+    │       └── 000000000328.jpg
+    └── labels
+        ├── train
+        │   ├── 000000000036.txt
+        │   ├── 000000000077.txt
+        │   ├── 000000000110.txt
+        │   ├── 000000000113.txt
+        │   └── 000000000165.txt
+        └── val
+            ├── 000000000241.txt
+            ├── 000000000294.txt
+            ├── 000000000308.txt
+            ├── 000000000322.txt
+            └── 000000000328.txt
+```
+
+## Dataset config
+
+`yolo/config/dataset/wholebody34.yaml`
+
+```yaml
+path: data/wholebody34
+train: train
+validation: val
+
+class_num: 34
+class_list: ['body', 'adult', 'child', 'male', 'female', 'body_with_wheelchair', 'body_with_crutches', 'head', 'front', 'right-front', 'right-side', 'right-back', 'back', 'left-back', 'left-side', 'left-front', 'face', 'eye', 'nose', 'mouth', 'ear', 'collarbone', 'shoulder', 'solar_plexus', 'elbow', 'wrist', 'hand', 'hand_left', 'hand_right', 'abdomen', 'hip_joint', 'knee', 'ankle', 'foot']
+
+auto_download:
+```
+
 ## Training
 
 To train YOLO on your machine/dataset:
