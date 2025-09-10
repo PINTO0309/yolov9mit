@@ -50,9 +50,6 @@ source .venv/bin/activate
 
 ## Features
 
-<table>
-<tr><td>
-
 ## Task
 
 These are simple examples. For more customization details, please refer to [Notebooks](examples) and lower-level modifications **[HOWTO](docs/HOWTO.md)**.
