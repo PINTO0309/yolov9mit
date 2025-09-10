@@ -11,3 +11,6 @@ use_wandb: True
 use_tensorboard: False
 
 weight: True # Path to weight or True for auto, False for no pretrained weight
+
+# Global step logging interval for Trainer
+log_every_n_steps: 500

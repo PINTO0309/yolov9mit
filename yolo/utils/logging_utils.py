@@ -38,7 +38,7 @@ from typing_extensions import override
 from yolo.config.config import Config, YOLOLayer
 from yolo.model.yolo import YOLO
 from yolo.utils.logger import logger
-from yolo.utils.model_utils import EMA
+from yolo.utils.model_utils import EMA, SaveBestWeights
 from yolo.utils.solver_utils import make_ap_table
 
 
@@ -284,6 +284,8 @@ def setup(cfg: Config):
 
     if hasattr(cfg.task, "ema") and cfg.task.ema.enable:
         progress.append(EMA(cfg.task.ema.decay))
+    # Save best and last .pt files alongside .ckpt directory
+    progress.append(SaveBestWeights())
     if quite:
         logger.setLevel(logging.ERROR)
         return progress, loggers, save_path

@@ -22,7 +22,7 @@ def main(cfg: Config):
         precision="16-mixed",
         callbacks=callbacks,
         logger=loggers,
-        log_every_n_steps=1,
+        log_every_n_steps=getattr(cfg, "log_every_n_steps", 500),
         gradient_clip_val=10,
         gradient_clip_algorithm="norm",
         deterministic=True,

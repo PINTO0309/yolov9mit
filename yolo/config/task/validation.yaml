@@ -12,3 +12,6 @@ nms:
   min_confidence: 0.0001
   min_iou: 0.7
   max_bbox: 1000
+
+# Whether to print per-class mAP on validation end
+print_map_per_class: False

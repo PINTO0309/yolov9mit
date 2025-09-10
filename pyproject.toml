@@ -22,6 +22,7 @@ dependencies = [
     "pycocotools==2.0.6",
     "requests==2.28.2",
     "rich>=14.1.0",
+    "tensorboard==2.20.0",
     "torch==2.8.0",
     "torchvision==0.23.0",
     "wandb==0.16.6",

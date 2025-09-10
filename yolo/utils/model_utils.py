@@ -8,6 +8,7 @@ import torch
 import torch.distributed as dist
 from lightning import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.utilities import rank_zero_only
 from omegaconf import ListConfig
 from torch import Tensor, no_grad
 from torch.optim import Optimizer
@@ -63,6 +64,124 @@ class EMA(Callback):
         decay_factor = self.decay * (1 - exp(-self.step / self.tau))
         for key, param in pl_module.model.state_dict().items():
             self.ema_state_dict[key] = lerp(param.detach(), self.ema_state_dict[key], decay_factor)
+
+
+class SaveBestWeights(Callback):
+    """Save best and last model weights (.pt) during training.
+
+    - At the end of each validation epoch, saves:
+        - last.pt: current model/EMA weights
+        - best_XXXX_0.0000.pt: when mAP improves; keeps only the latest best file
+    - Saves into the same directory as Lightning checkpoints.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.best_map = float("-inf")
+        self.best_path: Optional[Path] = None
+        self.ckpt_dir: Optional[Path] = None
+
+    def _resolve_ckpt_dir(self, trainer: "Trainer") -> Path:
+        # Prefer the dirpath from any ModelCheckpoint-like callback if present
+        ckpt_dir = None
+        checkpoint_cb = getattr(trainer, "checkpoint_callback", None)
+        if checkpoint_cb is not None and getattr(checkpoint_cb, "dirpath", None):
+            ckpt_dir = Path(checkpoint_cb.dirpath)
+        if ckpt_dir is None:
+            for cb in getattr(trainer, "callbacks", []):
+                dirpath = getattr(cb, "dirpath", None)
+                if dirpath:
+                    ckpt_dir = Path(dirpath)
+                    break
+        if ckpt_dir is None:
+            log_dir = getattr(trainer, "log_dir", None)
+            if log_dir:
+                ckpt_dir = Path(log_dir) / "checkpoints"
+        if ckpt_dir is None:
+            logger_obj = getattr(trainer, "logger", None)
+            save_dir = getattr(logger_obj, "save_dir", None)
+            if save_dir:
+                ckpt_dir = Path(save_dir) / "checkpoints"
+        if ckpt_dir is None:
+            ckpt_dir = Path(trainer.default_root_dir) / "checkpoints"
+
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        return ckpt_dir
+
+    @rank_zero_only
+    def on_fit_start(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
+        self.ckpt_dir = self._resolve_ckpt_dir(trainer)
+
+    @rank_zero_only
+    def on_validation_epoch_end(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
+        # Ensure checkpoint directory is ready
+        if self.ckpt_dir is None:
+            self.ckpt_dir = self._resolve_ckpt_dir(trainer)
+
+        # Determine current weights to save (prefer EMA if available)
+        model_to_save = getattr(pl_module, "ema", None)
+        if model_to_save is None:
+            model_to_save = getattr(pl_module, "model", pl_module)
+
+        # Helper: export to official flat state_dict without leading 'model.'
+        def export_official_state_dict(module) -> "OrderedDict[str, torch.Tensor]":
+            sd = module.state_dict()
+            flat = {}
+            for k, v in sd.items():
+                if k.startswith("model."):
+                    nk = k[len("model."):]
+                else:
+                    nk = k
+                flat[nk] = v.detach().to("cpu")
+            # Preserve insertion order
+            from collections import OrderedDict
+            return OrderedDict(flat)
+
+        # Save last.pt every validation epoch in official format
+        last_path = self.ckpt_dir / "last.pt"
+        torch.save(export_official_state_dict(model_to_save), last_path)
+
+        # Get current mAP from logged metrics
+        metrics = getattr(trainer, "callback_metrics", {}) or {}
+        current_map = metrics.get("map")
+        try:
+            current_map = float(current_map) if current_map is not None else None
+        except Exception:
+            current_map = None
+
+        if current_map is None:
+            return
+
+        # If new best, save best_{variant}_XXXX_0.0000.pt and remove previous best
+        if current_map > self.best_map:
+            epoch = int(getattr(trainer, "current_epoch", 0))
+            # Extract variant from cfg.model.name (e.g., v9-t -> t)
+            def extract_variant(module):
+                cfg = getattr(module, "cfg", None)
+                model_obj = getattr(cfg, "model", None) if cfg is not None else None
+                name = getattr(model_obj, "name", None)
+                if not name:
+                    return "unknown"
+                s = str(name).lower()
+                if "-" in s:
+                    return s.split("-")[-1]
+                return s
+
+            variant = extract_variant(pl_module)
+            best_name = f"best_{variant}_{epoch:04d}_{current_map:.4f}.pt"
+            best_path = self.ckpt_dir / best_name
+
+            torch.save(export_official_state_dict(model_to_save), best_path)
+
+            # Remove previous best if exists
+            if self.best_path is not None and self.best_path.exists():
+                try:
+                    self.best_path.unlink()
+                except Exception:
+                    pass
+
+            self.best_map = current_map
+            self.best_path = best_path
 
 
 def create_optimizer(model: YOLO, optim_cfg: OptimizerConfig) -> Optimizer:

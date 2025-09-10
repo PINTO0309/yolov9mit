@@ -76,11 +76,102 @@ To perform transfer learning with YOLOv9:
 ```shell
 uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c dataset={dataset_config} device={cpu, mps, cuda}
 
-uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=16 model=v9-n dataset=wholebody34 device=cuda use_wandb=False
-uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-t dataset=wholebody34 device=cuda use_wandb=False
-uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-s dataset=wholebody34 device=cuda use_wandb=False
-uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-c dataset=wholebody34 device=cuda use_wandb=False
-uv run python yolo/lazy.py task=train task.epoch=100 task.data.batch_size=8 model=v9-e dataset=wholebody34 device=cuda use_wandb=False
+# n, t, s, c
+VARIANT=n
+EPOCH=100
+BATCHSIZE=8
+
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+
+# When specifying trained weights as initial weights
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.pt" \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+
+# Automatically downloading the initial weights published by the official repository
+# Default: weight=True
+# Weight download path: weights/*.pt
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+weight=True \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+
+# When starting training without initial weights
+# Default: weight=True
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+weight=False \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+```
+
+If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training.
+
+```
+┏━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┓
+┃Epoch┃Avg. Precision  ┃     %╇Avg. Recall     ┃     %┃
+┡━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━┩
+│    2│AP @ .5:.95     │000.77╎AR maxDets   1  │003.08│
+│    2│AP @     .5     │002.02╎AR maxDets  10  │006.91│
+│    2│AP @    .75     │000.45╎AR maxDets 100  │008.74│
+│    2│AP  (small)     │000.33╎AR     (small)  │001.93│
+│    2│AP (medium)     │000.69╎AR    (medium)  │007.74│
+│    2│AP  (large)     │001.34╎AR     (large)  │008.55│
+└─────┴────────────────┴──────┴────────────────┴──────┘
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ ID┃Name                     ┃     AP┃ ID┃Name                     ┃     AP┃ ID┃Name                     ┃     AP┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│  0│body                     │ 0.0343│ 20│ear                      │ 0.0023│   │                         │       │
+│  1│adult                    │ 0.0320│ 21│collarbone               │ 0.0003│   │                         │       │
+│  2│child                    │ 0.0000│ 22│shoulder                 │ 0.0033│   │                         │       │
+│  3│male                     │ 0.0268│ 23│solar_plexus             │ 0.0003│   │                         │       │
+│  4│female                   │ 0.0103│ 24│elbow                    │ 0.0001│   │                         │       │
+│  5│body_with_wheelchair     │ 0.0029│ 25│wrist                    │ 0.0001│   │                         │       │
+│  6│body_with_crutches       │ 0.0455│ 26│hand                     │ 0.0029│   │                         │       │
+│  7│head                     │ 0.0340│ 27│hand_left                │ 0.0022│   │                         │       │
+│  8│front                    │ 0.0102│ 28│hand_right               │ 0.0027│   │                         │       │
+│  9│right-front              │ 0.0155│ 29│abdomen                  │ 0.0005│   │                         │       │
+│ 10│right-side               │ 0.0059│ 30│hip_joint                │ 0.0006│   │                         │       │
+│ 11│right-back               │ 0.0023│ 31│knee                     │ 0.0010│   │                         │       │
+│ 12│back                     │ 0.0001│ 32│ankle                    │ 0.0012│   │                         │       │
+│ 13│left-back                │ 0.0015│ 33│foot                     │ 0.0063│   │                         │       │
+│ 14│left-side                │ 0.0025│   │                         │       │   │                         │       │
+│ 15│left-front               │ 0.0105│   │                         │       │   │                         │       │
+│ 16│face                     │ 0.0047│   │                         │       │   │                         │       │
+│ 17│eye                      │ 0.0000│   │                         │       │   │                         │       │
+│ 18│nose                     │ 0.0000│   │                         │       │   │                         │       │
+│ 19│mouth                    │ 0.0000│   │                         │       │   │                         │       │
+└───┴─────────────────────────┴───────┴───┴─────────────────────────┴───────┴───┴─────────────────────────┴───────┘
 ```
 
 ### Inference
