@@ -186,7 +186,7 @@ If you want to display the AP for each class for all epochs, change `yolo/config
 
 ```
 ┏━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┓
-┃Epoch┃Avg. Precision  ┃     %╇Avg. Recall     ┃     %┃
+┃Epoch┃Avg. Precision  ┃     %┃Avg. Recall     ┃     %┃
 ┡━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━┩
 │    2│AP @ .5:.95     │000.77╎AR maxDets   1  │003.08│
 │    2│AP @     .5     │002.02╎AR maxDets  10  │006.91│
