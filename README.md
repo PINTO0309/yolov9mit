@@ -192,7 +192,7 @@ The figure below shows the CPU and RAM status of my work PC. When I run 16 batch
 
 ### print_map_per_class
 
-If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training.
+If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training. If `print_map_per_class: False` is set, AP per class will be calculated and output only once at the end of the final epoch.
 
 ```
 ┏━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┓
