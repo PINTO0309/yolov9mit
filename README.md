@@ -231,6 +231,23 @@ If you want to display the AP for each class for all epochs, change `yolo/config
 └───┴─────────────────────────┴───────┴───┴─────────────────────────┴───────┴───┴─────────────────────────┴───────┘
 ```
 
+### Weights after training
+The weights after training are output to the following path.
+
+|File|Note|
+|:-|:-|
+|`best_{variant}_{epoch:04}_{map:.4f}.pt`|Optimized weight file containing only EMA weights. The weights with the highest mAP are automatically saved.|
+|`epoch={epoch}-step={step}.ckpt`|A checkpoint file containing all learning logs automatically saved by Lightning.|
+|`last.pt`|Optimized weight file containing only EMA weights. The weights of the last epoch are automatically saved.|
+
+e.g.
+```
+runs/train/v9-n/lightning_logs/version_0/checkpoints
+├── best_n_0002_0.0065.pt
+├── epoch=2-step=3462.ckpt
+└── last.pt
+```
+
 ### Inference
 
 To use a model for object detection, use:
