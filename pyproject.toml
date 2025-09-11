@@ -18,6 +18,7 @@ dependencies = [
     "loguru==0.7.0",
     "numpy==1.26.4",
     "opencv-python==4.11.0.86",
+    "albumentations==2.0.8",
     "pillow==10.4.0",
     "pycocotools==2.0.6",
     "requests==2.28.2",
@@ -57,4 +58,3 @@ torchvision = [
 name = "torch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
-
