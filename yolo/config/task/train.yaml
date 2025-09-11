@@ -25,6 +25,45 @@ data:
     RandomSaturation:
       prob: 0.5
       factor_range: [0.7, 1.3]
+    # Albumentations-based: blur/noise/compression
+    Blur:
+      prob: 0.10
+      blur_limit: [3, 7]
+    MotionBlur:
+      prob: 0.10
+      blur_limit: [5, 15]
+    GaussianBlur:
+      prob: 0.10
+      blur_limit: [3, 7]
+      sigma_limit: [0.1, 2.0]
+    GaussNoise:
+      prob: 0.15
+      mean: 0.0
+      var_limit: [10.0, 50.0]
+    ImageCompression:
+      prob: 0.25
+      quality_range: [40, 90]
+    ISONoise:
+      prob: 0.20
+      intensity: [0.05, 0.15]
+      color_shift: [0.01, 0.05]
+    # Albumentations-based: weather/lighting
+    RandomRain:
+      prob: 0.15
+      slant_range: [-10, 10]
+      drop_length: [15, 30]
+      drop_width_range: [1, 2]
+      density: [0.002, 0.006]
+      blur_value: [3, 5]
+      brightness_coefficient: [0.9, 1.0]
+    RandomFog:
+      prob: 0.10
+      fog_coef: [0.3, 0.6]
+      alpha_coef: [0.05, 0.1]
+    RandomSunFlare:
+      prob: 0.10
+      src_radius_range: [50, 150]
+      src_intensity: [0.6, 1.0]
     RemoveOutliers: 1e-8
 
 optimizer:

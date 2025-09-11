@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision.transforms import functional as TF
+import inspect
 
 
 class AugmentationComposer:
@@ -259,3 +260,316 @@ class RandomSaturation:
             factor = torch.empty(1).uniform_(float(low), float(high)).item()
             image = TF.adjust_saturation(image, factor)
         return image, boxes
+
+
+# ===============================
+# Albumentations-based augmenters
+# ===============================
+
+def _albu_apply(image: Image.Image, aug) -> Image.Image:
+    """Apply an Albumentations augmenter to a PIL image safely."""
+    arr = np.array(image)
+    out = aug(image=arr)
+    return Image.fromarray(out["image"])  # type: ignore[index]
+
+
+class Blur:
+    """Albumentations Blur wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, blur_limit=(3, 7)):
+        self.prob = prob
+        self.blur_limit = blur_limit
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.Blur
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            if "blur_limit" in params:
+                kwargs["blur_limit"] = tuple(self.blur_limit)
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for Blur. Install `albumentations`." ) from e
+
+
+class MotionBlur:
+    """Albumentations MotionBlur wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, blur_limit=(5, 15)):
+        self.prob = prob
+        self.blur_limit = blur_limit
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.MotionBlur
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            if "blur_limit" in params:
+                kwargs["blur_limit"] = tuple(self.blur_limit)
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for MotionBlur. Install `albumentations`." ) from e
+
+
+class GaussianBlur:
+    """Albumentations GaussianBlur wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, blur_limit=(3, 7), sigma_limit=(0.1, 2.0)):
+        self.prob = prob
+        self.blur_limit = blur_limit
+        self.sigma_limit = sigma_limit
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.GaussianBlur
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            if "blur_limit" in params:
+                kwargs["blur_limit"] = tuple(self.blur_limit)
+            if "sigma_limit" in params:
+                kwargs["sigma_limit"] = tuple(self.sigma_limit)
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for GaussianBlur. Install `albumentations`." ) from e
+
+
+class GaussNoise:
+    """Albumentations GaussNoise wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.15, mean: float = 0.0, var_limit=(10.0, 50.0)):
+        self.prob = prob
+        self.mean = mean
+        self.var_limit = var_limit
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = getattr(A, "GaussNoise", None)
+            if Cls is None:
+                Cls = getattr(A, "GaussianNoise", None)
+            if Cls is None:
+                raise RuntimeError("Albumentations GaussNoise/GaussianNoise not available")
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            var = tuple(self.var_limit)
+            if "var_limit" in params:
+                kwargs["var_limit"] = var
+            elif "std_range" in params:
+                # Albumentations 2.x expects std_range in [0,1] for float images
+                s0 = float(np.sqrt(var[0])) / 255.0
+                s1 = float(np.sqrt(var[1])) / 255.0
+                std = (max(0.0, min(1.0, s0)), max(0.0, min(1.0, s1)))
+                kwargs["std_range"] = std
+            if "mean" in params:
+                kwargs["mean"] = float(self.mean)
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for GaussNoise. Install `albumentations`." ) from e
+
+
+class ImageCompression:
+    """Albumentations ImageCompression wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.25, quality_range=(40, 90)):
+        self.prob = prob
+        self.quality_range = quality_range
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            ql, qu = int(self.quality_range[0]), int(self.quality_range[1])
+            Cls = A.ImageCompression
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            if "quality_range" in params:
+                kwargs["quality_range"] = (ql, qu)
+            else:
+                if "quality_lower" in params:
+                    kwargs["quality_lower"] = ql
+                if "quality_upper" in params:
+                    kwargs["quality_upper"] = qu
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for ImageCompression. Install `albumentations`." ) from e
+
+
+class ISONoise:
+    """Albumentations ISONoise wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.2, intensity=(0.05, 0.15), color_shift=(0.01, 0.05)):
+        self.prob = prob
+        self.intensity = intensity
+        self.color_shift = color_shift
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.ISONoise
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"p": 1.0}
+            if "color_shift" in params:
+                kwargs["color_shift"] = tuple(self.color_shift)
+            if "intensity" in params:
+                kwargs["intensity"] = tuple(self.intensity)
+            elif "intensity_range" in params:
+                kwargs["intensity_range"] = tuple(self.intensity)
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for ISONoise. Install `albumentations`." ) from e
+
+
+class RandomRain:
+    """Albumentations RandomRain wrapper (image-only)."""
+
+    def __init__(
+        self,
+        prob: float = 0.15,
+        slant_range=(-10, 10),
+        drop_length=(15, 30),
+        drop_width_range=(1, 2),
+        density=(0.002, 0.006),  # kept for config compatibility; Albumentations doesn't need it
+        blur_value=(3, 5),
+        brightness_coefficient=(0.9, 1.0),
+    ):
+        self.prob = prob
+        self.slant_range = slant_range
+        self.drop_length = drop_length
+        self.drop_width_range = drop_width_range
+        self.density = density
+        self.blur_value = blur_value
+        self.brightness_coefficient = brightness_coefficient
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.RandomRain
+            params = inspect.signature(Cls.__init__).parameters
+            sl_l, sl_u = int(self.slant_range[0]), int(self.slant_range[1])
+            dl = int(torch.randint(int(self.drop_length[0]), int(self.drop_length[1]) + 1, (1,)).item())
+            dw = int(torch.randint(int(self.drop_width_range[0]), int(self.drop_width_range[1]) + 1, (1,)).item())
+            bv = int(torch.randint(int(self.blur_value[0]), int(self.blur_value[1]) + 1, (1,)).item())
+            bc = float(torch.empty(1).uniform_(float(self.brightness_coefficient[0]), float(self.brightness_coefficient[1])).item())
+            kwargs = {"p": 1.0}
+            if "slant_range" in params:
+                kwargs["slant_range"] = (sl_l, sl_u)
+            else:
+                if "slant_lower" in params:
+                    kwargs["slant_lower"] = sl_l
+                if "slant_upper" in params:
+                    kwargs["slant_upper"] = sl_u
+            if "drop_length" in params:
+                kwargs["drop_length"] = dl
+            if "drop_width" in params:
+                kwargs["drop_width"] = dw
+            if "blur_value" in params:
+                kwargs["blur_value"] = bv
+            if "brightness_coefficient" in params:
+                kwargs["brightness_coefficient"] = bc
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for RandomRain. Install `albumentations`." ) from e
+
+
+class RandomFog:
+    """Albumentations RandomFog wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, fog_coef=(0.3, 0.6), alpha_coef=(0.05, 0.1)):
+        self.prob = prob
+        self.fog_coef = fog_coef
+        self.alpha_coef = alpha_coef
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.RandomFog
+            params = inspect.signature(Cls.__init__).parameters
+            fog_lower, fog_upper = float(self.fog_coef[0]), float(self.fog_coef[1])
+            alpha = float(torch.empty(1).uniform_(float(self.alpha_coef[0]), float(self.alpha_coef[1])).item())
+            kwargs = {"p": 1.0}
+            if "fog_coef" in params:
+                kwargs["fog_coef"] = (fog_lower, fog_upper)
+            elif "fog_coef_range" in params:
+                kwargs["fog_coef_range"] = (fog_lower, fog_upper)
+            else:
+                if "fog_coef_lower" in params:
+                    kwargs["fog_coef_lower"] = fog_lower
+                if "fog_coef_upper" in params:
+                    kwargs["fog_coef_upper"] = fog_upper
+            if "alpha_coef" in params:
+                kwargs["alpha_coef"] = alpha
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for RandomFog. Install `albumentations`." ) from e
+
+
+class RandomSunFlare:
+    """Albumentations RandomSunFlare wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, src_radius_range=(50, 150), src_intensity=(0.6, 1.0)):
+        self.prob = prob
+        self.src_radius_range = src_radius_range
+        self.src_intensity = src_intensity
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            src_radius = int(torch.randint(int(self.src_radius_range[0]), int(self.src_radius_range[1]) + 1, (1,)).item())
+            intensity = float(torch.empty(1).uniform_(float(self.src_intensity[0]), float(self.src_intensity[1])).item())
+            Cls = A.RandomSunFlare
+            params = inspect.signature(Cls.__init__).parameters
+            kwargs = {"src_radius": src_radius, "p": 1.0, "flare_roi": (0, 0, 1, 1)}
+            if "intensity" in params:
+                kwargs["intensity"] = intensity
+            elif "intensity_coeff" in params:
+                kwargs["intensity_coeff"] = intensity
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for RandomSunFlare. Install `albumentations`." ) from e
