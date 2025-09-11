@@ -182,6 +182,16 @@ use_wandb=False \
 use_tensorboard=True
 ```
 
+⚠️ **important points** ⚠️
+
+Pay particular attention to the maximum number of CPU threads and the amount of RAM on the machine you are trying to train on. I'm talking RAM, not VRAM. The number of worker processes specified during training is `batch_size + 1`, but you must adjust batch_size so that it is less than the maximum number of CPU `threads - 1`. Also, the amount of RAM consumed increases in proportion to the number of enabled augmentations, so you need to pay attention to the amount of RAM installed on your PC. Checking only the amount of VRAM is not enough. If you need to run heavy augmentation that exceeds the RAM capacity, we recommend setting batch_size to a relatively small value.
+
+The figure below shows the CPU and RAM status of my work PC. When I run 16 batches with the maximum number of augmentations enabled, 17 threads are started, which not only consumes a lot of RAM, causing the learning process to silently abort after a few epochs without outputting any errors.
+
+<img width="640" alt="image" src="https://github.com/user-attachments/assets/74d2e28a-a351-4491-aa4f-605056656b34" />
+
+### print_map_per_class
+
 If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training.
 
 ```
