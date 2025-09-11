@@ -1,4 +1,5 @@
 import os
+import argparse
 
 def limited_tree(root, max_files=5, prefix="", is_root=True):
     entries = sorted(os.listdir(root))
@@ -18,5 +19,36 @@ def limited_tree(root, max_files=5, prefix="", is_root=True):
         new_prefix = prefix + ("    " if i == len(dirs) - 1 else "│   ")
         limited_tree(os.path.join(root, d), max_files, new_prefix, is_root=False)
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Print a limited tree view of a directory."
+    )
+    # Positional root path with default; also allow --root for clarity
+    parser.add_argument(
+        "root",
+        nargs="?",
+        default="data",
+        help="Root directory to start from (default: data)",
+    )
+    parser.add_argument(
+        "--root",
+        dest="root_opt",
+        help="Root directory to start from (overrides positional)",
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=5,
+        help="Max number of files to show per directory (default: 5)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    limited_tree("data", max_files=5)
+    args = parse_args()
+    root = args.root_opt or args.root
+    if not os.path.exists(root):
+        raise SystemExit(f"Error: root path not found: {root}")
+    if not os.path.isdir(root):
+        raise SystemExit(f"Error: root path is not a directory: {root}")
+    limited_tree(root, max_files=args.max_files)
