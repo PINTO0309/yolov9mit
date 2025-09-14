@@ -160,7 +160,7 @@ To perform transfer learning with YOLOv9:
 ```shell
 uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c dataset={dataset_config} device={cpu, mps, cuda}
 
-# n, t, s, c
+# n, t, s, c, e
 VARIANT=n
 EPOCH=100
 BATCHSIZE=8
