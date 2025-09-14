@@ -13,8 +13,8 @@ data:
   pin_memory: True
   data_augment:
     RemoveOutliers: 1e-8
-    # Mosaic: 1
-    # MixUp: 1
+    # Mosaic: 1.0
+    # MixUp: 1.0
     # HorizontalFlip: 0.5
     RandomCrop: 0.5
     RandomHSV:
