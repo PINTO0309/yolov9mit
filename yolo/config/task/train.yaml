@@ -17,11 +17,11 @@ data:
     # MixUp: 1.0
     # HorizontalFlip: 0.5
     RandomCrop: 0.5
-    RandomHSV:
-      prob: 0.5
-      hue_gain: 0.015
-      saturation_gain: 0.7
-      value_gain: 0.4
+    # RandomHSV:
+    #   prob: 0.5
+    #   hue_gain: 0.015
+    #   saturation_gain: 0.7
+    #   value_gain: 0.4
     # RandomBrightness:
     #   prob: 0.5
     #   factor_range: [0.7, 1.3]
