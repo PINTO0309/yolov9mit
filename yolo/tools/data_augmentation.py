@@ -262,6 +262,70 @@ class RandomSaturation:
         return image, boxes
 
 
+class RandomHSV:
+    """
+    Randomly perturb hue, saturation, and value in HSV space.
+
+    This implementation avoids look-up tables and OpenCV usage. It operates via PIL's
+    HSV conversion and applies lightweight, vectorized adjustments:
+      - Hue: integer cyclic shift in [-hue_gain, +hue_gain] of the 8-bit hue domain (0-255).
+      - Saturation/Value: push-pull adjustment around mid-level (128) using a signed
+        delta in [-saturation_gain, +saturation_gain] / [-value_gain, +value_gain].
+        This preserves extremes better than simple scaling while remaining fast and
+        differentiable w.r.t. inputs.
+
+    Args:
+        prob (float): Probability to apply the augmentation.
+        hue_gain (float): Max fractional hue shift w.r.t. full cycle (0-1 corresponds to 0-255 steps).
+        saturation_gain (float): Max signed strength for saturation push-pull around 128.
+        value_gain (float): Max signed strength for value push-pull around 128.
+    """
+
+    def __init__(self, prob: float = 0.5, *, hue_gain: float = 0.015, saturation_gain: float = 0.7, value_gain: float = 0.4):
+        self.prob = prob
+        self.hue_gain = float(hue_gain)
+        self.saturation_gain = float(saturation_gain)
+        self.value_gain = float(value_gain)
+
+    def __call__(self, image: Image.Image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+
+        # Convert to HSV (8-bit per channel: 0..255)
+        hsv = np.array(image.convert("HSV"), dtype=np.uint16)  # use wider type to avoid overflow mid-compute
+
+        h = hsv[..., 0].astype(np.int16)  # allow negative before modulo
+        s = hsv[..., 1].astype(np.float32)
+        v = hsv[..., 2].astype(np.float32)
+
+        # Hue: sample fractional shift of the 0..255 cycle, then wrap with modulo 256.
+        if self.hue_gain > 0:
+            dh = int(round(torch.empty(1).uniform_(-self.hue_gain, self.hue_gain).item() * 255.0))
+            if dh != 0:
+                h = (h + dh) % 256
+
+        # Saturation/Value: push–pull around mid (128). Signed deltas in [-gain, +gain].
+        # s' = s + (s - 128) * ds; v' = v + (v - 128) * dv
+        if self.saturation_gain > 0:
+            ds = float(torch.empty(1).uniform_(-self.saturation_gain, self.saturation_gain).item())
+            if ds != 0.0:
+                s = s + (s - 128.0) * ds
+        if self.value_gain > 0:
+            dv = float(torch.empty(1).uniform_(-self.value_gain, self.value_gain).item())
+            if dv != 0.0:
+                v = v + (v - 128.0) * dv
+
+        # Clip back to valid range and pack
+        h = np.clip(h, 0, 255).astype(np.uint8)
+        s = np.clip(s, 0.0, 255.0).astype(np.uint8)
+        v = np.clip(v, 0.0, 255.0).astype(np.uint8)
+        hsv_out = np.stack([h, s, v], axis=-1)
+
+        # Back to RGB PIL Image
+        image = Image.fromarray(hsv_out, mode="HSV").convert("RGB")
+        return image, boxes
+
+
 # ===============================
 # Albumentations-based augmenters
 # ===============================
