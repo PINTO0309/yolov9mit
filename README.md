@@ -308,8 +308,21 @@ yolo task=inference task.data.source={Any}
 To validate model performance, or generate a json file in COCO format:
 
 ```shell
-python yolo/lazy.py task=validation
-python yolo/lazy.py task=validation dataset=toy
+# n, t, s, c, e
+VARIANT=n
+BATCHSIZE=8
+MAXDET=300
+
+uv run python yolo/lazy.py \
+task=validation \
+name=v9-${VARIANT} \
+task.data.batch_size=${BATCHSIZE} \
+task.nms.max_bbox=${MAXDET} \
+model=v9-${VARIANT} \
+weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.pt" \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False
 ```
 
 ## Contributing
