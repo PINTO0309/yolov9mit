@@ -301,6 +301,7 @@ To use a model for object detection, use:
 ```shell
 # n, t, s, c, e
 VARIANT=n
+RENDER_LABELS=False
 
 # If you do not specify `dataset={dataset_name}` correctly,
 # the classification head weights will not be loaded properly
@@ -314,6 +315,7 @@ dataset=wholebody25 \
 task.nms.min_confidence=0.1 \
 task.fast_inference=onnx \
 task.data.source=data/wholebody25/images/val \
+task.render_labels=${RENDER_LABELS} \
 +quite=True
 ```
 
