@@ -321,8 +321,9 @@ RENDER_LABELS=False
 # If you do not specify `dataset={dataset_name}` correctly,
 # the classification head weights will not be loaded properly
 # and you will not see any inference results.
-# The number of classes in the head part of the weights used for inference must match `class_num`.
-# e.g. https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/dataset/wholebody34.yaml
+# The number of classes in the head part of the weights used for inference
+# must match `class_num`.
+# https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/dataset/wholebody34.yaml
 ---
 path: data/wholebody34
 train: train
