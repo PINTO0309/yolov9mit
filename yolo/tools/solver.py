@@ -14,6 +14,7 @@ from yolo.tools.loss_functions import create_loss_function
 from yolo.utils.bounding_box_utils import create_converter, to_metrics_format
 from yolo.utils.logger import logger
 from yolo.utils.model_utils import PostProcess, create_optimizer, create_scheduler
+from yolo.utils.deploy_utils import FastModelLoader
 
 
 class BaseModel(LightningModule):
@@ -437,7 +438,15 @@ class InferenceModel(BaseModel):
     def __init__(self, cfg: Config):
         super().__init__(cfg)
         self.cfg = cfg
-        # TODO: Add FastModel
+        # Swap to fast inference model if requested (ONNX/TRT/deploy)
+        compiler = getattr(cfg.task, "fast_inference", None)
+        if compiler:
+            try:
+                device = str(cfg.device)
+                loader = FastModelLoader(cfg)
+                self.model = loader.load_model(device)
+            except Exception as e:
+                logger.warning(f":warning: Fast inference load failed ({compiler}), fallback to PyTorch. Error: {e}")
         self.predict_loader = create_dataloader(cfg.task.data, cfg.dataset, cfg.task.task)
 
     def setup(self, stage):
