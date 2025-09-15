@@ -452,7 +452,8 @@ class InferenceModel(BaseModel):
     def predict_step(self, batch, batch_idx):
         images, rev_tensor, origin_frame = batch
         predicts = self.post_process(self(images), rev_tensor=rev_tensor)
-        img = draw_bboxes(origin_frame, predicts, idx2label=self.cfg.dataset.class_list)
+        # Draw only box outlines during inference (no fill)
+        img = draw_bboxes(origin_frame, predicts, idx2label=self.cfg.dataset.class_list, fill=False)
         if getattr(self.predict_loader, "is_stream", None):
             fps = self._display_stream(img)
         else:

@@ -16,6 +16,7 @@ def draw_bboxes(
     bboxes: List[List[Union[int, float]]],
     *,
     idx2label: Optional[list] = None,
+    fill: bool = True,
 ):
     """
     Draw bounding boxes on an image.
@@ -53,8 +54,13 @@ def draw_bboxes(
         random.seed(int(class_id))
         color_map = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200))
 
-        draw.rounded_rectangle(bbox, outline=(*color_map, 200), radius=5, width=2)
-        draw.rounded_rectangle(bbox, fill=(*color_map, 100), radius=5)
+        draw.rounded_rectangle(
+            bbox,
+            outline=(*color_map, 200),
+            fill=((*color_map, 100) if fill else None),
+            radius=5,
+            width=2,
+        )
 
         class_text = str(idx2label[int(class_id)] if idx2label else int(class_id))
         label_text = f"{class_text}" + (f" {conf[0]: .0%}" if conf else "")
