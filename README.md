@@ -1,4 +1,4 @@
-# This repository is the MIT version of YOLO, which adds some bug fixes and the N (nano) and E (extended) variants to the original https://github.com/MultimediaTechLab/YOLO.
+# This repository is the MIT version of YOLO, which adds some bug fixes and the V9-N (nano) and V9-E (extended) variants to the original https://github.com/MultimediaTechLab/YOLO.
 
 ---
 
