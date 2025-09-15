@@ -226,6 +226,21 @@ dataset=wholebody34 \
 device=cuda \
 use_wandb=False \
 use_tensorboard=True
+
+# Resume learning from where you left off
+# Please note that you must specify the Lightning checkpoint file (.ckpt)
+# and not the .pt file that contains only the EMA weights.
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+task.resume_ckpt="runs/train/v9-n/lightning_logs/version_3/checkpoints/epoch=5-step=3660.ckpt" \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
 ```
 
 ⚠️ **important points** ⚠️
