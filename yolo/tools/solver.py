@@ -349,6 +349,32 @@ class TrainModel(ValidateModel):
     def setup(self, stage):
         super().setup(stage)
         self.loss_fn = create_loss_function(self.cfg, self.vec2box)
+        # Optional: load teacher for online KD
+        self.kd_cfg = getattr(self.cfg.task, "kd", None)
+        self.teacher = None
+        if self.kd_cfg and getattr(self.kd_cfg, "enable", False):
+            try:
+                from omegaconf import OmegaConf
+                from pathlib import Path as _P
+
+                teacher_name = getattr(self.kd_cfg, "teacher_model", "v9-e")
+                model_path = _P("yolo/config/model") / f"{teacher_name}.yaml"
+                if not model_path.exists():
+                    raise FileNotFoundError(f"Teacher model config not found: {model_path}")
+                teacher_cfg = OmegaConf.load(str(model_path))
+                weight_path = getattr(self.kd_cfg, "teacher_weight", None)
+                self.teacher = create_model(teacher_cfg, weight_path=weight_path, class_num=self.cfg.dataset.class_num)
+                self.teacher.eval()
+                if getattr(self.kd_cfg, "freeze_teacher", True):
+                    for p in self.teacher.parameters():
+                        p.requires_grad = False
+                self.teacher = self.teacher.to(self.device)
+                if self.device.type == "cuda" and getattr(self.kd_cfg, "teacher_fp16", True):
+                    self.teacher = self.teacher.half()
+                logger.info(":school: Online KD enabled with teacher model loaded")
+            except Exception as e:
+                logger.warning(f":warning: Failed to load teacher for KD: {e}")
+                self.teacher = None
 
     def train_dataloader(self):
         return self.train_loader
@@ -366,6 +392,13 @@ class TrainModel(ValidateModel):
         aux_predicts = self.vec2box(predicts["AUX"])
         main_predicts = self.vec2box(predicts["Main"])
         loss, loss_item = self.loss_fn(aux_predicts, main_predicts, targets)
+
+        # Online KD loss (added to GT loss)
+        if self.teacher is not None:
+            kd_loss, kd_items = self._compute_kd_loss(images, predicts)
+            loss = loss + kd_loss
+            # Merge KD logs into loss_item for reporting
+            loss_item.update(kd_items)
         # Log losses with stable TensorBoard ordering using numeric prefixes
         # Desired visual order:
         #   step:  BCELoss -> BoxLoss -> DFLLoss
@@ -403,6 +436,66 @@ class TrainModel(ValidateModel):
         # Ensure LR logs participate in global step throttling too
         self.log_dict(lr_dict, prog_bar=False, logger=True, on_step=True, on_epoch=False, rank_zero_only=True)
         return loss * batch_size
+
+    def _cosine_temperature(self, epoch: int, max_epochs: int, t0: float, t1: float) -> float:
+        if max_epochs <= 1:
+            return float(t1)
+        import math
+
+        cos = 0.5 * (1 + math.cos(math.pi * min(epoch, max_epochs - 1) / (max_epochs - 1)))
+        return float(t1 + (t0 - t1) * cos)
+
+    def _compute_kd_loss(self, images, student_out):
+        import torch.nn.functional as F
+        kd = self.kd_cfg
+        # Temperature schedule
+        T = self._cosine_temperature(int(self.current_epoch), int(self.trainer.max_epochs or self.cfg.task.epoch), kd.temperature.init, kd.temperature.final)
+
+        # Forward teacher with no grad
+        with torch.no_grad():
+            t_images = images.half() if (self.device.type == "cuda" and getattr(kd, "teacher_fp16", True)) else images
+            teacher_out = self.teacher(t_images)
+
+        # Select branches
+        branches = []
+        apply_to = getattr(kd, "apply_to", "main").lower()
+        if apply_to in ("main", "both"):
+            branches.append((student_out["Main"], teacher_out["Main"]))
+        if apply_to in ("aux", "both") and "AUX" in student_out and "AUX" in teacher_out:
+            branches.append((student_out["AUX"], teacher_out["AUX"]))
+
+        kd_cls = kd_dfl = kd_box = images.new_tensor(0.0)
+        for s_list, t_list in branches:
+            for (s_cls, s_anc, s_vec), (t_cls, t_anc, t_vec) in zip(s_list, t_list):
+                # Shapes:
+                # s_cls/t_cls: [B, C, H, W]
+                # s_anc/t_anc: [B, R, 4, H, W]  (logits over reg_max along dim=1)
+                # s_vec/t_vec: [B, 4, H, W]     (expected distances)
+
+                # Classification KD: soft-BCE with temperature, scaled by T^2
+                t_prob = (t_cls.float() / T).sigmoid()
+                s_logit = s_cls.float() / T
+                cls_loss = F.binary_cross_entropy_with_logits(s_logit, t_prob, reduction="mean") * (T * T)
+                kd_cls = kd_cls + cls_loss
+
+                # DFL KD: KL divergence between teacher and student distributions along reg axis
+                # reshape to [B, 4, H, W, R] for stable softmax over R
+                s_reg = (s_anc.float() / T).permute(0, 2, 3, 4, 1)  # B,4,H,W,R
+                t_reg = (t_anc.float() / T).permute(0, 2, 3, 4, 1)
+                s_logp = F.log_softmax(s_reg, dim=-1)
+                t_prob_reg = F.softmax(t_reg, dim=-1)
+                # KL(t||s) averaged
+                dfl_loss = F.kl_div(s_logp, t_prob_reg, reduction="batchmean") * (T * T)
+                kd_dfl = kd_dfl + dfl_loss
+
+                # Box KD: L1 on vector expectation
+                box_loss = F.l1_loss(s_vec.float(), t_vec.float())
+                kd_box = kd_box + box_loss
+
+        # Weighting
+        w = kd.weights
+        kd_total = w.cls * kd_cls + w.dfl * kd_dfl + w.box * kd_box
+        return kd_total, {"KD/cls": kd_cls.detach().item(), "KD/dfl": kd_dfl.detach().item(), "KD/box": kd_box.detach().item()}
 
     def on_train_epoch_end(self):
         # Push epoch-aggregated loss metrics to TensorBoard with epoch as x-axis

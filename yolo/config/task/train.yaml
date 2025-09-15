@@ -106,3 +106,20 @@ scheduler:
 ema:
   enable: true
   decay: 0.9999
+
+# Online knowledge distillation (teacher-student)
+kd:
+  enable: false
+  teacher_model: v9-e
+  teacher_weight: weights/v9-e.pt
+  apply_to: main  # main|aux|both
+  temperature:
+    init: 4.0
+    final: 1.5
+    schedule: cosine
+  weights:
+    cls: 1.0
+    dfl: 0.5
+    box: 0.25
+  teacher_fp16: true
+  freeze_teacher: true
