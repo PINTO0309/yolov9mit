@@ -320,6 +320,7 @@ To validate model performance, or generate a json file in COCO format:
 # n, t, s, c, e
 VARIANT=n
 # Specify the same `batch_size` as the batch size used during training.
+# Otherwise, the mAP value after validation will be significantly degraded.
 # data:
 #  batch_size: 32
 # https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/validation.yaml
