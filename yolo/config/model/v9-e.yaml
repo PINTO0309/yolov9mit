@@ -92,7 +92,7 @@ model:
           part_channels: 128
           process_channels: 64
           csp_args: {repeat_num: 2}
-        tags: FB3
+        tags: F19
 
     - ADown:
         args: {out_channels: 256}
@@ -105,7 +105,7 @@ model:
           part_channels: 256
           process_channels: 128
           csp_args: {repeat_num: 2}
-        tags: FB4
+        tags: F22
 
     - ADown:
         args: {out_channels: 512}
@@ -118,7 +118,7 @@ model:
           part_channels: 512
           process_channels: 256
           csp_args: {repeat_num: 2}
-
+        tags: F25
     - ADown:
         args: {out_channels: 1024}
     - CBFuse:
@@ -130,7 +130,7 @@ model:
           part_channels: 512
           process_channels: 256
           csp_args: {repeat_num: 2}
-        tags: FB5
+        tags: F28
 
   neck:
     - SPPELAN:
@@ -140,7 +140,7 @@ model:
     - UpSample:
         args: {scale_factor: 2, mode: nearest}
     - Concat:
-        source: [-1, FB4]
+        source: [-1, F25]
     - RepNCSPELAN:
         args:
           out_channels: 512
@@ -152,7 +152,7 @@ model:
     - UpSample:
         args: {scale_factor: 2, mode: nearest}
     - Concat:
-        source: [-1, FB3]
+        source: [-1, F22]
 
   head:
     - RepNCSPELAN:
@@ -209,8 +209,8 @@ model:
     - ADown:
         args: {out_channels: 256}
     - CBFuse:
-        source: [RT1, RT3, RT5, RT7, RT9, -1]
-        args: {index: [0, 0, 0, 0, 0]}
+        source: [RT5, RT7, RT9, -1]
+        args: {index: [2, 2, 2]}
     - RepNCSPELAN:
         args:
           out_channels: 256
@@ -222,8 +222,8 @@ model:
     - ADown:
         args: {out_channels: 256}
     - CBFuse:
-        source: [RT3, RT5, RT7, RT9, -1]
-        args: {index: [1, 1, 1, 1]}
+        source: [RT5, RT7, RT9, -1]
+        args: {index: [2, 2, 2]}
     - RepNCSPELAN:
         args:
           out_channels: 512
@@ -235,8 +235,8 @@ model:
     - ADown:
         args: {out_channels: 512}
     - CBFuse:
-        source: [RT5, RT7, RT9, -1]
-        args: {index: [2, 2, 2]}
+        source: [RT7, RT9, -1]
+        args: {index: [3, 3]}
     - RepNCSPELAN:
         args:
           out_channels: 1024
