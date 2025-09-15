@@ -319,7 +319,7 @@ To validate model performance, or generate a json file in COCO format:
 ```shell
 # n, t, s, c, e
 VARIANT=n
-BATCHSIZE=8
+BATCHSIZE=32
 # The higher the model's performance, the more accurate the evaluation will be
 # if the MAXDET value (the upper limit of the number of detections) is set to
 # a larger value. The default value is 1,000. yolo/config/task/validation.yaml
