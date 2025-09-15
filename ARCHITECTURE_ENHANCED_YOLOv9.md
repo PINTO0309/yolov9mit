@@ -148,6 +148,8 @@ Key points:
 - EMA/Checkpoints remain student‑only; the teacher is never saved or EMA’d.
 
 ### 8.2 Flow diagram (with branches)
+<img width="1874" height="595" alt="online_kd_flow" src="https://github.com/user-attachments/assets/95f9382e-91b5-41e6-baaf-0e12972a34c1" />
+<details><summary>Mermaid diagram</summary>
 
 ```mermaid
 graph LR
@@ -176,8 +178,8 @@ graph LR
   KDM --> L1
   L1 -- backprop_student_only --> OPT[Optimizer/EMA]
 ```
+</details>
 
-![Online KD Flow (rendered)](docs/images/online_kd_flow.png)
 
 ### 8.3 Configuration
 
