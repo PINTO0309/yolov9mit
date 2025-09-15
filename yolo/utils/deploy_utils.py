@@ -82,6 +82,23 @@ class FastModelLoader:
             dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
         )
         logger.info(f":inbox_tray: ONNX model saved to {self.model_path}")
+
+        # Run onnxsim three times to simplify the exported graph if available
+        try:
+            import onnx  # type: ignore
+            from onnxsim import simplify  # type: ignore
+
+            model_onnx = onnx.load(self.model_path)
+            for i in range(1, 4):
+                logger.info(f":twisted_rightwards_arrows: onnxsim pass {i}/3 ...")
+                model_onnx, check = simplify(model_onnx)
+                if not check:
+                    logger.warning(":warning: onnxsim reported check=False; stopping further passes.")
+                    break
+            onnx.save(model_onnx, self.model_path)
+            logger.info(f":white_check_mark: ONNX simplified and saved to {self.model_path}")
+        except Exception as e:
+            logger.warning(f":warning: Skip onnxsim optimization ({e}); using raw ONNX.")
         return InferenceSession(self.model_path, providers=providers)
 
     def _load_trt_model(self):

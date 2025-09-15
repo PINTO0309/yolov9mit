@@ -1674,6 +1674,24 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxsim"
+version = "0.4.30"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "onnx" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/68/6996056a08965d4ff7b4c09dbf6405c7e2dcadf0cba56d1f4d6edf405457/onnxsim-0.4.30.tar.gz", hash = "sha256:1b697874871a84b587cf23727d57f85434615b15b592f4b1c8cac922d7e7fb56", size = 20123702, upload-time = "2023-06-04T15:50:05.06Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/3d/b119783f20a35a9cb10a1392ee73a4c2bf8e95f2fc724ea954c7cbb265f9/onnxsim-0.4.30-cp310-cp310-macosx_10_15_universal2.whl", hash = "sha256:6599c89682ae282015bc38ba95ec70c9654ba81a95792d93192adfa8755f7bef", size = 3355226, upload-time = "2023-06-04T15:49:33.96Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/d3/381ad47e2fb6ffb7f7a816feb49875e6f67d3d9f83feff2914aa391b234f/onnxsim-0.4.30-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b36674ca4435e25caf47841720b74915a944a9f8a0e78f3113f8859baed80af4", size = 2173227, upload-time = "2023-06-04T15:49:35.657Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/53/0cf2eab303fdd6009ad43658b9459287fcccb36c31808d981962439655f4/onnxsim-0.4.30-cp310-cp310-win_amd64.whl", hash = "sha256:138906734ca3925ebc6d207567769f5858e165d5a8147f85d305d46d90415068", size = 1239949, upload-time = "2023-06-04T15:49:37.066Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/4d/38711f5aadfa825024f423ae3f09b185d00974d499577e97d1401df21818/onnxsim-0.4.30-cp311-cp311-macosx_10_15_universal2.whl", hash = "sha256:a4ff0c7552af2c89d472a667ea2dbb6ec779e44ea62c690de443eb8fc48a2747", size = 3355249, upload-time = "2023-06-04T15:49:39.045Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/ed/755f9307b18b074670082ea87e723bbf4977947dc31667806643ab0e4e7b/onnxsim-0.4.30-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:462d4aee2634cadd5fe44ee4821b0fb9e9d64963fe9513e533ab63b8dbebdbc3", size = 2173314, upload-time = "2023-06-04T15:49:40.548Z" },
+    { url = "https://files.pythonhosted.org/packages/70/a1/5890caa57e02102784e6b76f046973f0d444686ae9e6937fa6a36f52d6a2/onnxsim-0.4.30-cp311-cp311-win_amd64.whl", hash = "sha256:4ec1d0d4bd460feacb67203c1b4be27d4ec0962f0c9f0ccf5ea581c206acebe4", size = 1239955, upload-time = "2023-06-04T15:49:42.498Z" },
+]
+
+[[package]]
 name = "opencv-python"
 version = "4.11.0.86"
 source = { registry = "https://pypi.org/simple" }
@@ -2964,6 +2982,7 @@ dependencies = [
     { name = "numpy" },
     { name = "onnx" },
     { name = "onnxruntime" },
+    { name = "onnxsim" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pycocotools" },
@@ -2987,6 +3006,7 @@ requires-dist = [
     { name = "numpy", specifier = "==1.26.4" },
     { name = "onnx", specifier = "==1.19.0" },
     { name = "onnxruntime", specifier = "==1.22.1" },
+    { name = "onnxsim", specifier = "==0.4.30" },
     { name = "opencv-python", specifier = "==4.11.0.86" },
     { name = "pillow", specifier = "==10.4.0" },
     { name = "pycocotools", specifier = "==2.0.6" },
