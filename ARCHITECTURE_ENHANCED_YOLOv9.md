@@ -150,31 +150,31 @@ Key points:
 ### 8.2 Flow diagram (with branches)
 
 ```mermaid
-flowchart LR
-  I[Images] -->|forward| S[Student Net]
+graph LR
+  I[Images] -- forward --> S[Student Net]
   S --> SA[AUX Heads]
   S --> SM[Main Heads]
-  I -->|forward (no grad, FP16)| T[Teacher Net (E, frozen)]
+  I -- forward_no_grad_FP16 --> T[Teacher Net E_frozen]
   T --> TA[Teacher AUX Heads]
   T --> TM[Teacher Main Heads]
 
   subgraph GT_SelfDistill
-    SA -->|Vec2Box| DA[Decode AUX]
-    SM -->|Vec2Box| DM[Decode Main]
-    DA -->|AUX GT Loss| L1[Loss]
-    DM -->|Main GT Loss| L1
+    SA -- Vec2Box --> DA[Decode AUX]
+    SM -- Vec2Box --> DM[Decode Main]
+    DA -- AUX_GT_Loss --> L1[Loss]
+    DM -- Main_GT_Loss --> L1
   end
 
   subgraph Online_KD
-    SA -. optional .->|KD (apply_to=aux/both)| KDA[CLS/DFL/BOX KD]
-    SM -->|KD (apply_to=main/both)| KDM[CLS/DFL/BOX KD]
+    SA -. optional .- KDA[CLS/DFL/BOX KD]
+    SM -- KD_main_or_both --> KDM[CLS/DFL/BOX KD]
     TA -. provides .- KDA
     TM -. provides .- KDM
   end
 
   KDA --> L1
   KDM --> L1
-  L1 -->|backprop (student only)| OPT[Optimizer/EMA]
+  L1 -- backprop_student_only --> OPT[Optimizer/EMA]
 ```
 
 ### 8.3 Configuration
