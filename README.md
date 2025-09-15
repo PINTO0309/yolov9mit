@@ -161,6 +161,12 @@ uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c weight=F
 
 To perform transfer learning with YOLOv9:
 
+- `configs`
+  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/config.yaml
+  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/general.yaml
+  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/train.yaml
+  - https://github.com/PINTO0309/yolov9mit/tree/wholebody/yolo/config/model
+
 ```shell
 # n, t, s, c, e
 VARIANT=n
