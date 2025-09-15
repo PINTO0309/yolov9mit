@@ -310,8 +310,8 @@ uv run python yolo/lazy.py \
 task=inference \
 name=v9-${VARIANT} \
 model=v9-${VARIANT} \
-weight="runs/train/v9-n/lightning_logs/version_3/checkpoints/best_n_0470_0.2904.pt" \
-dataset=wholebody25 \
+weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.pt" \
+dataset=wholebody34 \
 task.nms.min_confidence=0.1 \
 task.fast_inference=onnx \
 task.data.source=data/wholebody25/images/val \
