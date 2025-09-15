@@ -32,7 +32,8 @@ def main(cfg: Config):
 
     if cfg.task.task == "train":
         model = TrainModel(cfg)
-        trainer.fit(model)
+        ckpt = getattr(cfg.task, "resume_ckpt", None)
+        trainer.fit(model, ckpt_path=ckpt)
     if cfg.task.task == "validation":
         model = ValidateModel(cfg)
         trainer.validate(model)
