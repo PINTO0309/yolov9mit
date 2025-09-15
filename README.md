@@ -319,6 +319,10 @@ To validate model performance, or generate a json file in COCO format:
 ```shell
 # n, t, s, c, e
 VARIANT=n
+# Specify the same `batch_size` as the batch size used during training.
+# data:
+#  batch_size: 32
+# https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/validation.yaml
 BATCHSIZE=32
 # The higher the model's performance, the more accurate the evaluation will be
 # if the MAXDET value (the upper limit of the number of detections) is set to
