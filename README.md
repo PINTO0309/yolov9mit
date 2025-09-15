@@ -311,7 +311,9 @@ To validate model performance, or generate a json file in COCO format:
 # n, t, s, c, e
 VARIANT=n
 BATCHSIZE=8
-MAXDET=300
+# The higher the model's performance, the more accurate the evaluation will be if the upper limit of
+# the number of detections is set to a larger value.
+MAXDET=5000
 
 uv run python yolo/lazy.py \
 task=validation \
