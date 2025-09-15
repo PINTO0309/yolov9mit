@@ -299,17 +299,19 @@ runs/train/v9-n/lightning_logs/version_0/checkpoints
 To use a model for object detection, use:
 
 ```shell
-python yolo/lazy.py # if cloned from GitHub
-python yolo/lazy.py task=inference \ # default is inference
-                    name=AnyNameYouWant \ # AnyNameYouWant
-                    device=cpu \ # hardware cuda, cpu, mps
-                    model=v9-s \ # model version: v9-c, m, s
-                    task.nms.min_confidence=0.1 \ # nms config
-                    task.fast_inference=onnx \ # onnx, trt, deploy
-                    task.data.source=data/toy/images/train \ # file, dir, webcam
-                    +quite=True \ # Quite Output
-yolo task.data.source={Any Source} # if pip installed
-yolo task=inference task.data.source={Any}
+# n, t, s, c, e
+VARIANT=n
+
+uv run python yolo/lazy.py \
+task=inference \
+name=v9-${VARIANT} \
+model=v9-${VARIANT} \
+weight="runs/train/v9-n/lightning_logs/version_3/checkpoints/best_n_0470_0.2904.pt" \
+dataset=wholebody25 \
+task.nms.min_confidence=0.1 \
+task.fast_inference=onnx \
+task.data.source=data/wholebody25/images/val \
++quite=True
 ```
 
 ### Validation
