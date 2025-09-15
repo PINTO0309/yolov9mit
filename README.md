@@ -1,3 +1,7 @@
+# This repository is the MIT version of YOLO, which adds some bug fixes and the N (nano) and E (extended) variants to the original https://github.com/MultimediaTechLab/YOLO.
+
+---
+
 # YOLO: Official Implementation of YOLOv9, YOLOv7, YOLO-RD
 
 [![Documentation Status](https://readthedocs.org/projects/yolo-docs/badge/?version=latest)](https://yolo-docs.readthedocs.io/en/latest/?badge=latest)
