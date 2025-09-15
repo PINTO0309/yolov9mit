@@ -177,6 +177,8 @@ graph LR
   L1 -- backprop_student_only --> OPT[Optimizer/EMA]
 ```
 
+![Online KD Flow (rendered)](docs/images/online_kd_flow.png)
+
 ### 8.3 Configuration
 
 Configurable via `task.kd` in `yolo/config/task/train.yaml` and CLI overrides:
