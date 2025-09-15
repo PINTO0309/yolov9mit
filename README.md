@@ -311,7 +311,7 @@ VARIANT=n
 BATCHSIZE=8
 # The higher the model's performance, the more accurate the evaluation will be
 # if the MAXDET value (the upper limit of the number of detections) is set to
-#  a larger value. The default value is 1,000.
+# a larger value. The default value is 1,000.
 # However, setting a value that exceeds the maximum number of labels contained
 # in one image will have no effect. For example, in my dataset, an image contains
 # a maximum of 3,875 labels, so setting it to 4,000 is appropriate.
