@@ -453,7 +453,14 @@ class InferenceModel(BaseModel):
         images, rev_tensor, origin_frame = batch
         predicts = self.post_process(self(images), rev_tensor=rev_tensor)
         # Draw only box outlines during inference (no fill)
-        img = draw_bboxes(origin_frame, predicts, idx2label=self.cfg.dataset.class_list, fill=False)
+        render_labels = getattr(self.cfg.task, "render_labels", True)
+        img = draw_bboxes(
+            origin_frame,
+            predicts,
+            idx2label=self.cfg.dataset.class_list,
+            fill=False,
+            draw_labels=render_labels,
+        )
         if getattr(self.predict_loader, "is_stream", None):
             fps = self._display_stream(img)
         else:

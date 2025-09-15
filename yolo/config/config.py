@@ -116,6 +116,7 @@ class InferenceConfig:
     data: DataConfig
     fast_inference: Optional[None]
     save_predict: bool
+    render_labels: bool
 
 
 @dataclass

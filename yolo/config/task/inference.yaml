@@ -10,3 +10,4 @@ nms:
   min_iou: 0.5
   max_bbox: 300
 save_predict: True
+render_labels: True

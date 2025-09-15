@@ -17,6 +17,7 @@ def draw_bboxes(
     *,
     idx2label: Optional[list] = None,
     fill: bool = True,
+    draw_labels: bool = True,
 ):
     """
     Draw bounding boxes on an image.
@@ -62,16 +63,17 @@ def draw_bboxes(
             width=2,
         )
 
-        class_text = str(idx2label[int(class_id)] if idx2label else int(class_id))
-        label_text = f"{class_text}" + (f" {conf[0]: .0%}" if conf else "")
+        if draw_labels:
+            class_text = str(idx2label[int(class_id)] if idx2label else int(class_id))
+            label_text = f"{class_text}" + (f" {conf[0]: .0%}" if conf else "")
 
-        text_bbox = font.getbbox(label_text)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = (text_bbox[3] - text_bbox[1]) * 1.5
+            text_bbox = font.getbbox(label_text)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = (text_bbox[3] - text_bbox[1]) * 1.5
 
-        text_background = [(x_min, y_min), (x_min + text_width, y_min + text_height)]
-        draw.rounded_rectangle(text_background, fill=(*color_map, 175), radius=2)
-        draw.text((x_min, y_min), label_text, fill="white", font=font)
+            text_background = [(x_min, y_min), (x_min + text_width, y_min + text_height)]
+            draw.rounded_rectangle(text_background, fill=(*color_map, 175), radius=2)
+            draw.text((x_min, y_min), label_text, fill="white", font=font)
 
     return img
 
