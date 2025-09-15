@@ -55,11 +55,11 @@ def draw_bboxes(
         random.seed(int(class_id))
         color_map = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200))
 
-        draw.rounded_rectangle(
+        # Draw sharp-corner bounding boxes (no rounded corners)
+        draw.rectangle(
             bbox,
             outline=(*color_map, 200),
             fill=((*color_map, 100) if fill else None),
-            radius=5,
             width=2,
         )
 
