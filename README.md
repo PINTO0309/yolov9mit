@@ -302,6 +302,9 @@ To use a model for object detection, use:
 # n, t, s, c, e
 VARIANT=n
 
+# If you do not specify `dataset={dataset_name}` correctly,
+# the classification head weights will not be loaded properly
+# and you will not see any inference results.
 uv run python yolo/lazy.py \
 task=inference \
 name=v9-${VARIANT} \
