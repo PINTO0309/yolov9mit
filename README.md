@@ -165,6 +165,7 @@ To perform transfer learning with YOLOv9:
   - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/config.yaml
   - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/general.yaml
   - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/train.yaml
+  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/validation.yaml
   - https://github.com/PINTO0309/yolov9mit/tree/wholebody/yolo/config/model
 
 ```shell
@@ -237,7 +238,7 @@ The figure below shows the CPU and RAM status of my work PC. When I run 16 batch
 
 ### print_map_per_class
 
-If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training. If `print_map_per_class: False` is set, AP per class will be calculated and output only once at the end of the final epoch.
+If you want to display the AP for each class for all epochs, change `yolo/config/task/validation.yaml`'s `print_map_per_class: True` and start training. If `print_map_per_class: False` is set, AP per class will be calculated and output only once at the end of the final epoch. Since `print_map_per_class` takes a very long time to process, we recommend setting it to `False` and automatically calculating `map_per_class` only in the final epoch.
 
 ```
 ┏━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┓
