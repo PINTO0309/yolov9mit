@@ -4,6 +4,7 @@ defaults:
   - validation: ../validation
 
 epoch: 500
+resume_ckpt: null
 
 data:
   batch_size: 16

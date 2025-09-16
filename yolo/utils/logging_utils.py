@@ -21,7 +21,7 @@ import numpy as np
 import torch
 import wandb
 from lightning import LightningModule, Trainer, seed_everything
-from lightning.pytorch.callbacks import Callback, RichModelSummary, RichProgressBar
+from lightning.pytorch.callbacks import Callback, ModelCheckpoint, RichModelSummary, RichProgressBar
 from lightning.pytorch.callbacks.progress.rich_progress import CustomProgress
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
@@ -100,6 +100,12 @@ class YOLORichProgressBar(RichProgressBar):
             total_batches=num_epochs,
             description=f"[cyan]Start Training {num_epochs} epochs",
         )
+        # When resuming from a checkpoint, keep epoch progress in sync with the trainer
+        current_epoch = int(getattr(trainer, "current_epoch", 0))
+        if current_epoch > 0:
+            # Cap to the configured total to avoid overshooting in edge cases
+            completed = min(current_epoch, num_epochs)
+            self.progress.update(self.task_epoch, completed=completed)
         self.max_result = 0
         self.past_results.clear()
 
@@ -284,6 +290,8 @@ def setup(cfg: Config):
 
     if hasattr(cfg.task, "ema") and cfg.task.ema.enable:
         progress.append(EMA(cfg.task.ema.decay))
+    # Customize Lightning checkpoint filenames to use underscores
+    progress.append(ModelCheckpoint(filename="epoch_{epoch}_step_{step}"))
     # Save best and last .pt files alongside .ckpt directory
     progress.append(SaveBestWeights())
     if quite:

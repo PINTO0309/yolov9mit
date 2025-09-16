@@ -236,7 +236,7 @@ name=v9-${VARIANT} \
 task.epoch=${EPOCH} \
 task.data.batch_size=${BATCHSIZE} \
 model=v9-${VARIANT} \
-task.resume_ckpt="runs/train/v9-n/lightning_logs/version_3/checkpoints/epoch=5-step=3660.ckpt" \
+task.resume_ckpt="runs/train/v9-n/lightning_logs/version_3/checkpoints/epoch_5_step_3660.ckpt" \
 dataset=wholebody34 \
 device=cuda \
 use_wandb=False \
@@ -317,14 +317,14 @@ The weights after training are output to the following path.
 |File|Note|
 |:-|:-|
 |`best_{variant}_{epoch:04}_{map:.4f}.pt`|Optimized weight file containing only EMA weights. The weights with the highest mAP are automatically saved.|
-|`epoch={epoch}-step={step}.ckpt`|A checkpoint file containing all learning logs automatically saved by Lightning.|
+|`epoch_{epoch}_step_{step}.ckpt`|A checkpoint file containing all learning logs automatically saved by Lightning.|
 |`last.pt`|Optimized weight file containing only EMA weights. The weights of the last epoch are automatically saved.|
 
 e.g.
 ```
 runs/train/v9-n/lightning_logs/version_0/checkpoints
 ├── best_n_0002_0.0065.pt
-├── epoch=2-step=3462.ckpt
+├── epoch_2_step_3462.ckpt
 └── last.pt
 ```
 

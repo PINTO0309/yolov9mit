@@ -66,6 +66,25 @@ class EMA(Callback):
         for key, param in pl_module.model.state_dict().items():
             self.ema_state_dict[key] = lerp(param.detach(), self.ema_state_dict[key], decay_factor)
 
+    def state_dict(self) -> dict:
+        state = {"step": self.step, "tau": self.tau, "decay": self.decay}
+        if self.ema_state_dict is not None:
+            state["ema_state_dict"] = {k: v.detach().cpu() for k, v in self.ema_state_dict.items()}
+        else:
+            state["ema_state_dict"] = None
+        return state
+
+    def load_state_dict(self, state: dict) -> None:
+        if not state:
+            return
+        self.step = int(state.get("step", 0))
+        self.tau = float(state.get("tau", self.tau))
+        self.decay = float(state.get("decay", self.decay))
+        ema_state = state.get("ema_state_dict")
+        if ema_state is not None:
+            # Clone to avoid accidental reference sharing with Lightning internals
+            self.ema_state_dict = {k: v.clone() for k, v in ema_state.items()}
+
 
 class SaveBestWeights(Callback):
     """Save best and last model weights (.pt) during training.
