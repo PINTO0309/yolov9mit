@@ -242,6 +242,7 @@ device=cuda \
 use_wandb=False \
 use_tensorboard=True
 
+↓↓↓ Experimental implementation. Not recommended as accuracy is significantly reduced. ↓↓↓
 # Online Knowledge Distillation (Teacher E → Student {C,S,T,N})
 # Default: task.kd.enable=False
 # ./ARCHITECTURE_ENHANCED_YOLOv9.md#8-online-knowledge-distillation-teacher-e--student-cstn
@@ -258,6 +259,7 @@ dataset=wholebody34 \
 device=cuda \
 use_wandb=False \
 use_tensorboard=True
+↑↑↑ Experimental implementation. Not recommended as accuracy is significantly reduced. ↑↑↑
 ```
 
 ⚠️ **important points** ⚠️
