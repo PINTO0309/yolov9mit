@@ -436,6 +436,50 @@ Key overrides (all optional):
 Other global defaults (`device`, `out_path`, etc.) still apply via `config/general.yaml` and can be
 overridden the same way when invoking `yolo/lazy.py`.
 
+## Simple performance benchmark using ONNX/TensorRT
+
+```bash
+# Install CUDA==12.9
+#  https://developer.nvidia.com/cuda-toolkit-archive
+# Install TensorRT==10.13.3.9-1+cuda12.9
+#  https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html
+uv add sit4onnx==1.0.10 onnxruntime-gpu==1.22.0
+```
+```bash
+uv run sit4onnx -if best_e_0205_0.4140_1x3x640x640.onnx -oep cpu
+
+INFO: file: best_e_0205_0.4140_1x3x640x640.onnx
+INFO: providers: ['CPUExecutionProvider']
+INFO: input_name.1: images shape: [1, 3, 640, 640] dtype: float32
+INFO: test_loop_count: 10
+INFO: total elapsed time:  3673.502206802368 ms
+INFO: avg elapsed time per pred:  367.3502206802368 ms
+INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
+```
+```bash
+# It will take a while to generate the TensorrtExecutionProvider_TRTKernel_*.engine cache file.
+uv run sit4onnx -if best_e_0205_0.4140_1x3x640x640.onnx -oep cuda
+
+INFO: file: best_e_0205_0.4140_1x3x640x640.onnx
+INFO: providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+INFO: input_name.1: images shape: [1, 3, 640, 640] dtype: float32
+INFO: test_loop_count: 10
+INFO: total elapsed time:  350.10218620300293 ms
+INFO: avg elapsed time per pred:  35.01021862030029 ms
+INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
+```
+```bash
+uv run sit4onnx -if best_e_0205_0.4140_1x3x640x640.onnx -oep tensorrt
+
+INFO: file: best_e_0205_0.4140_1x3x640x640.onnx
+INFO: providers: ['TensorrtExecutionProvider', 'CPUExecutionProvider']
+INFO: input_name.1: images shape: [1, 3, 640, 640] dtype: float32
+INFO: test_loop_count: 10
+INFO: total elapsed time:  104.28452491760254 ms
+INFO: avg elapsed time per pred:  10.428452491760254 ms
+INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
+```
+
 ## Contributing
 
 Contributions to the YOLO project are welcome! See [CONTRIBUTING](docs/CONTRIBUTING.md) for guidelines on how to contribute.
