@@ -161,9 +161,9 @@ class TrainConfig:
     loss: LossConfig
     scheduler: SchedulerConfig
     ema: EMAConfig
+    validation: ValidationConfig
     resume_ckpt: Optional[str] = None
     kd: Optional[KDConfig] = None
-    validation: ValidationConfig
 
 
 @dataclass
