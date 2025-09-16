@@ -456,7 +456,7 @@ INFO: avg elapsed time per pred:  367.3502206802368 ms
 INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
 ```
 ```bash
-# It will take a while to generate the TensorrtExecutionProvider_TRTKernel_*.engine cache file.
+# It will take a while to generate the TensorrtExecutionProvider_TRTKernel_*.engine cache.
 uv run sit4onnx -if best_e_0205_0.4140_1x3x640x640.onnx -oep cuda
 
 INFO: file: best_e_0205_0.4140_1x3x640x640.onnx
