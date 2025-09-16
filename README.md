@@ -402,7 +402,7 @@ use_wandb=False
 
 Use the Hydra-driven CLI to run the `export` task and produce a compact ONNX graph. The exporter emits a
 single `[batch, 4 + num_classes, anchors]` tensor, keeps detection heads minimal, and derives an informative
-filename (e.g. `best_n_0470_0.2904_1x3x640x480.onnx`). Example:
+filename (e.g. `best_n_0470_0.2904_1x3x480x640.onnx`). Example:
 
 ```bash
 uv run python yolo/lazy.py \
@@ -424,7 +424,7 @@ task.include_metadata=True
 Key overrides (all optional):
 - `task.batch_size`: dummy input batch size (default 1).
 - `task.dynamic_batch`: `true` marks batch as symbolic `N` and names the file accordingly.
-- `task.image_size`: input resolution. Accepts `[W,H]`, `{height:…, width:…}`, `'W,H'`, or `'HxW'`.
+- `task.image_size`: input resolution. Accepts `'HxW'`.
 - `task.opset`: ONNX opset version (default 13).
 - `task.simplify`: run `onnxsim` for graph simplification.
 - `task.half`: export weights/activations in FP16.
