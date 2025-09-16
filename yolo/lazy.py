@@ -9,12 +9,18 @@ sys.path.append(str(project_root))
 
 from yolo.config.config import Config
 from yolo.tools.solver import InferenceModel, TrainModel, ValidateModel
+from yolo.tools.exporter import ONNXExporter
 from yolo.utils.logging_utils import setup
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
 def main(cfg: Config):
     callbacks, loggers, save_path = setup(cfg)
+
+    if cfg.task.task == "export":
+        exporter = ONNXExporter(cfg, save_path)
+        exporter.run()
+        return
 
     trainer = Trainer(
         accelerator="auto",
@@ -34,10 +40,10 @@ def main(cfg: Config):
         model = TrainModel(cfg)
         ckpt = getattr(cfg.task, "resume_ckpt", None)
         trainer.fit(model, ckpt_path=ckpt)
-    if cfg.task.task == "validation":
+    elif cfg.task.task == "validation":
         model = ValidateModel(cfg)
         trainer.validate(model)
-    if cfg.task.task == "inference":
+    elif cfg.task.task == "inference":
         model = InferenceModel(cfg)
         trainer.predict(model)
 

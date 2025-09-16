@@ -396,6 +396,44 @@ device=cuda \
 use_wandb=False
 ```
 
+### Export
+
+Use the Hydra-driven CLI to run the `export` task and produce a compact ONNX graph. The exporter emits a
+single `[batch, 4 + num_classes, anchors]` tensor, keeps detection heads minimal, and derives an informative
+filename (e.g. `best_n_0470_0.2904_1x3x640x480.onnx`). Example:
+
+```bash
+uv run python yolo/lazy.py \
+task=export \
+name=v9-demo \
+model=v9-n \
+dataset=wholebody34 \
+weight="runs/train/v9-n/lightning_logs/version_3/checkpoints/best_n_0470_0.2904.pt" \
+task.batch_size=1 \
+task.dynamic_batch=False \
+task.image_size=480x640 \
+task.opset=13 \
+task.simplify=True \
+task.half=false \
+task.apply_sigmoid=True \
+task.include_metadata=True
+```
+
+Key overrides (all optional):
+- `task.batch_size`: dummy input batch size (default 1).
+- `task.dynamic_batch`: `true` marks batch as symbolic `N` and names the file accordingly.
+- `task.image_size`: input resolution. Accepts `[W,H]`, `{height:…, width:…}`, `'W,H'`, or `'HxW'`.
+- `task.opset`: ONNX opset version (default 13).
+- `task.simplify`: run `onnxsim` for graph simplification.
+- `task.half`: export weights/activations in FP16.
+- `task.apply_sigmoid`: emit post-sigmoid class probabilities instead of raw logits.
+- `task.include_metadata`: embed class names in ONNX metadata.
+- `task.output_path`: explicit destination; omit to auto-name beside the weight file.
+- `task.name`: experiment/run folder label (standard Hydra behaviour).
+
+Other global defaults (`device`, `out_path`, etc.) still apply via `config/general.yaml` and can be
+overridden the same way when invoking `yolo/lazy.py`.
+
 ## Contributing
 
 Contributions to the YOLO project are welcome! See [CONTRIBUTING](docs/CONTRIBUTING.md) for guidelines on how to contribute.
