@@ -51,6 +51,9 @@ def draw_bboxes(
         x_min, x_max = min(x_min, x_max), max(x_min, x_max)
         y_min, y_max = min(y_min, y_max), max(y_min, y_max)
         bbox = [(x_min, y_min), (x_max, y_max)]
+        white_w = 3
+        offset = white_w // 2
+        inner_bbox = [(x_min + offset, y_min + offset), (x_max - offset, y_max - offset)]
 
         random.seed(int(class_id))
         color_map = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200))
@@ -58,9 +61,15 @@ def draw_bboxes(
         # Draw sharp-corner bounding boxes (no rounded corners)
         draw.rectangle(
             bbox,
+            outline=(*(255, 255, 255), 200),
+            fill=((*color_map, 100) if fill else None),
+            width=white_w,
+        )
+        draw.rectangle(
+            inner_bbox,
             outline=(*color_map, 200),
             fill=((*color_map, 100) if fill else None),
-            width=2,
+            width=white_w//2,
         )
 
         if draw_labels:
