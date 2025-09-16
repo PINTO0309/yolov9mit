@@ -443,7 +443,6 @@ overridden the same way when invoking `yolo/lazy.py`.
 #  https://developer.nvidia.com/cuda-toolkit-archive
 # Install TensorRT==10.13.3.9-1+cuda12.9
 #  https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html
-uv add sit4onnx==1.0.10 onnxruntime-gpu==1.22.0
 ```
 ```bash
 uv run sit4onnx -if best_e_0205_0.4140_1x3x640x640.onnx -oep cpu
