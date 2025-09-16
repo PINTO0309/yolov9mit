@@ -5,6 +5,7 @@ data:
   source: demo/images/inference/image.png
   image_size: ${image_size}
   data_augment: {}
+  max_samples: null
 nms:
   min_confidence: 0.5
   min_iou: 0.5

@@ -59,7 +59,8 @@ class DataConfig:
     image_size: List[int]
     data_augment: Dict[str, int]
     source: Optional[Union[str, int]]
-    dynamic_shape: Optional[bool]
+    dynamic_shape: Optional[bool] = None
+    max_samples: Optional[int] = None
 
 
 @dataclass

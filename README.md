@@ -361,6 +361,7 @@ dataset=wholebody34 \
 task.nms.min_confidence=0.1 \
 task.fast_inference=onnx \
 task.data.source=data/wholebody34/images/val \
+task.data.max_samples=100 \
 task.render_labels=${RENDER_LABELS} \
 +quite=True
 ```

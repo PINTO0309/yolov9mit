@@ -2,7 +2,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from statistics import mean
 from threading import Event, Thread
-from typing import Generator, List, Tuple, Union
+from typing import Generator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -263,6 +263,18 @@ class StreamDataLoader:
     def __init__(self, data_cfg: DataConfig):
         self.source = data_cfg.source
         self.running = True
+        self._stopped = False
+        max_samples = getattr(data_cfg, "max_samples", None)
+        self.max_samples: Optional[int] = None
+        if max_samples is not None:
+            try:
+                value = int(max_samples)
+                if value > 0:
+                    self.max_samples = value
+            except (TypeError, ValueError):
+                logger.warning(f":warning: Ignoring invalid inference max_samples value: {max_samples}")
+        self._loaded_samples = 0
+        self._returned_samples = 0
         self.is_stream = isinstance(self.source, int) or str(self.source).lower().startswith("rtmp://")
 
         self.transform = AugmentationComposer([], data_cfg.image_size)
@@ -292,13 +304,16 @@ class StreamDataLoader:
             if self.stop_event.is_set():
                 break
             if file_path.suffix.lower() in [".jpg", ".jpeg", ".png", ".bmp"]:
-                self.process_image(file_path)
+                if not self.process_image(file_path):
+                    break
 
     def process_image(self, image_path):
+        if self.max_samples is not None and self._loaded_samples >= self.max_samples:
+            return False
         image = Image.open(image_path).convert("RGB")
         if image is None:
             raise ValueError(f"Error loading image: {image_path}")
-        self.process_frame(image)
+        return self.process_frame(image)
 
     def load_video_file(self, video_path):
         import cv2
@@ -308,10 +323,15 @@ class StreamDataLoader:
             ret, frame = cap.read()
             if not ret:
                 break
-            self.process_frame(frame)
+            if not self.process_frame(frame):
+                break
         cap.release()
 
     def process_frame(self, frame):
+        if self.max_samples is not None and self._loaded_samples >= self.max_samples:
+            self.stop_event.set()
+            self.running = False
+            return False
         if isinstance(frame, np.ndarray):
             # TODO: we don't need cv2
             import cv2
@@ -322,35 +342,68 @@ class StreamDataLoader:
         frame, _, rev_tensor = self.transform(frame, torch.zeros(0, 5))
         frame = frame[None]
         rev_tensor = rev_tensor[None]
+        self._loaded_samples += 1
         if not self.is_stream:
             self.queue.put((frame, rev_tensor, origin_frame))
         else:
             self.current_frame = (frame, rev_tensor, origin_frame)
+        if self.max_samples is not None and self._loaded_samples >= self.max_samples:
+            self.stop_event.set()
+            if self.is_stream:
+                self.running = False
+        return True
 
     def __iter__(self) -> Generator[Tensor, None, None]:
         return self
 
     def __next__(self) -> Tensor:
+        if self.max_samples is not None and self._returned_samples >= self.max_samples:
+            self.stop()
+            raise StopIteration
         if self.is_stream:
+            if not self.running:
+                self.stop()
+                raise StopIteration
             ret, frame = self.cap.read()
             if not ret:
                 self.stop()
                 raise StopIteration
-            self.process_frame(frame)
+            if not self.process_frame(frame):
+                self.stop()
+                raise StopIteration
+            self._returned_samples += 1
+            if self.max_samples is not None and self._returned_samples >= self.max_samples:
+                self.stop_event.set()
+                self.stop()
             return self.current_frame
         else:
             try:
                 frame = self.queue.get(timeout=1)
-                return frame
             except Empty:
+                self.stop()
                 raise StopIteration
+            self._returned_samples += 1
+            if self.max_samples is not None and self._returned_samples >= self.max_samples:
+                self.stop_event.set()
+                self.stop()
+            return frame
 
     def stop(self):
+        if self._stopped:
+            return
+        self._stopped = True
         self.running = False
+        self.stop_event.set()
         if self.is_stream:
-            self.cap.release()
+            cap = getattr(self, "cap", None)
+            if cap is not None:
+                cap.release()
         else:
-            self.thread.join(timeout=1)
+            thread = getattr(self, "thread", None)
+            if thread is not None:
+                thread.join(timeout=1)
 
     def __len__(self):
+        if self.max_samples is not None:
+            return self.max_samples
         return self.queue.qsize() if not self.is_stream else 0
