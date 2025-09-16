@@ -1,4 +1,4 @@
-# This fork is the MIT version of YOLO, which adds some bug fixes and the V9-N (nano) and V9-E (extended) variants to the original https://github.com/MultimediaTechLab/YOLO.
+# This fork is an MIT version of YOLO, with some bug fixes and the addition of the V9-N (nano) and V9-E (extended) variants to the original. It also adds an online distillation pipeline from the higher variants in addition to the official implementation. https://github.com/MultimediaTechLab/YOLO.
 
 ---
 
