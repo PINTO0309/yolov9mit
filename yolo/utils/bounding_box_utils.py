@@ -449,12 +449,44 @@ class Anc2Box:
         return preds_cls, None, preds_box, preds_cnf.sigmoid()
 
 
-def create_converter(model_version: str = "v9-c", *args, **kwargs) -> Union[Anc2Box, Vec2Box]:
-    if "v7" in model_version:  # check model if v7
-        converter = Anc2Box(*args, **kwargs)
-    else:
-        converter = Vec2Box(*args, **kwargs)
-    return converter
+
+class FusedONNXConverter:
+    def __init__(self, class_num: int):
+        self.class_num = class_num
+
+    def update(self, image_size):
+        return
+
+    def __call__(self, fused: Tensor):
+        if fused.ndim != 3:
+            raise ValueError("Fused ONNX output must be 3-dimensional [B, F, N]")
+        if fused.shape[1] == 4 + self.class_num:
+            features = fused
+        elif fused.shape[2] == 4 + self.class_num:
+            features = fused.permute(0, 2, 1)
+        else:
+            raise ValueError("Unexpected fused tensor shape")
+        boxes = features[:, :4, :].permute(0, 2, 1)
+        classes = features[:, 4:, :].permute(0, 2, 1)
+        return classes, None, boxes
+
+
+def create_converter(
+    model_version: str = "v9-c",
+    model: Optional[YOLO] = None,
+    anchor_cfg: Optional[AnchorConfig] = None,
+    image_size: Optional[List[int]] = None,
+    device: Optional[torch.device] = None,
+    *,
+    class_num: Optional[int] = None,
+) -> Union[Anc2Box, Vec2Box, FusedONNXConverter]:
+    if getattr(model, 'fused_onnx_output', False):
+        if class_num is None:
+            raise ValueError('Fused ONNX converter requires class_num')
+        return FusedONNXConverter(class_num)
+    if "v7" in model_version:
+        return Anc2Box(model, anchor_cfg, image_size, device)
+    return Vec2Box(model, anchor_cfg, image_size, device)
 
 
 def bbox_nms(cls_dist: Tensor, bbox: Tensor, nms_cfg: NMSConfig, confidence: Optional[Tensor] = None):
