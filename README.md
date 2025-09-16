@@ -244,6 +244,7 @@ use_tensorboard=True
 
 # Online Knowledge Distillation (Teacher E → Student {C,S,T,N})
 # Default: task.kd.enable=False
+# ./ARCHITECTURE_ENHANCED_YOLOv9.md#8-online-knowledge-distillation-teacher-e--student-cstn
 uv run python yolo/lazy.py \
 task=train \
 name=v9-${VARIANT} \
