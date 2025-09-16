@@ -48,7 +48,12 @@ class ValidateModel(BaseModel):
 
     def setup(self, stage):
         self.vec2box = create_converter(
-            self.cfg.model.name, self.model, self.cfg.model.anchor, self.cfg.image_size, self.device
+            self.cfg.model.name,
+            model=self.model,
+            anchor_cfg=self.cfg.model.anchor,
+            image_size=self.cfg.image_size,
+            device=self.device,
+            class_num=self.cfg.dataset.class_num,
         )
         self.post_process = PostProcess(self.vec2box, self.validation_cfg.nms)
 
@@ -544,7 +549,12 @@ class InferenceModel(BaseModel):
 
     def setup(self, stage):
         self.vec2box = create_converter(
-            self.cfg.model.name, self.model, self.cfg.model.anchor, self.cfg.image_size, self.device
+            self.cfg.model.name,
+            model=self.model,
+            anchor_cfg=self.cfg.model.anchor,
+            image_size=self.cfg.image_size,
+            device=self.device,
+            class_num=self.cfg.dataset.class_num,
         )
         self.post_process = PostProcess(self.vec2box, self.cfg.task.nms)
 

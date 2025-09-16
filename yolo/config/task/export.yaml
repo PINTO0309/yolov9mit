@@ -1,0 +1,13 @@
+task: export
+
+batch_size: 1
+opset: 13
+simplify: true
+half: false
+dynamic_batch: false
+apply_sigmoid: true
+include_metadata: true
+image_size:
+  height: 640
+  width: 640
+output_path: null

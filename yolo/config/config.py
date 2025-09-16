@@ -151,6 +151,19 @@ class ValidationConfig:
     nms: NMSConfig
     data: DataConfig
 
+@dataclass
+class ExportConfig:
+    task: str
+    batch_size: int = 1
+    opset: int = 13
+    simplify: bool = True
+    half: bool = False
+    dynamic_batch: bool = False
+    apply_sigmoid: bool = True
+    include_metadata: bool = True
+    output_path: Optional[str] = None
+    image_size: Optional[List[int]] = None
+
 
 @dataclass
 class TrainConfig:
@@ -168,7 +181,7 @@ class TrainConfig:
 
 @dataclass
 class Config:
-    task: Union[TrainConfig, InferenceConfig, ValidationConfig]
+    task: Union[TrainConfig, InferenceConfig, ValidationConfig, ExportConfig]
     dataset: DatasetConfig
     model: ModelConfig
     name: str

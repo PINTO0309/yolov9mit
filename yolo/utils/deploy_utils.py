@@ -1,10 +1,12 @@
 from pathlib import Path
+from copy import deepcopy
 
 import torch
 from torch import Tensor
 
-from yolo.config.config import Config
+from yolo.config.config import Config, ExportConfig
 from yolo.model.yolo import create_model
+from yolo.tools.exporter import ONNXExporter
 from yolo.utils.logger import logger
 
 
@@ -15,11 +17,13 @@ class FastModelLoader:
         self.class_num = cfg.dataset.class_num
 
         self._validate_compiler()
-        if cfg.weight == True:
+        if cfg.weight is True:
             cfg.weight = Path("weights") / f"{cfg.model.name}.pt"
-        # Save compiled artifact next to the specified weight file
-        weight_path = Path(cfg.weight)
-        self.model_path = str(weight_path.with_suffix(f".{self.compiler}"))
+        self.weight_path = Path(cfg.weight) if cfg.weight else None
+        self.model_path = None
+        if self.weight_path is not None and self.compiler == "trt":
+            self.model_path = str(self.weight_path.with_suffix(f".{self.compiler}"))
+        self._onnx_path = None
 
     def _validate_compiler(self):
         if self.compiler not in ["onnx", "trt", "deploy"]:
@@ -41,65 +45,57 @@ class FastModelLoader:
     def _load_onnx_model(self, device):
         from onnxruntime import InferenceSession
 
-        def onnx_forward(self: InferenceSession, x: Tensor):
-            x = {self.get_inputs()[0].name: x.cpu().numpy()}
-            model_outputs, layer_output = [], []
-            for idx, predict in enumerate(self.run(None, x)):
-                layer_output.append(torch.from_numpy(predict).to(device))
-                if idx % 3 == 2:
-                    model_outputs.append(layer_output)
-                    layer_output = []
-            if len(model_outputs) == 6:
-                model_outputs = model_outputs[:3]
-            return {"Main": model_outputs}
-
-        InferenceSession.__call__ = onnx_forward
-
-        if device == "cpu":
-            providers = ["CPUExecutionProvider"]
-        else:
-            providers = ["CUDAExecutionProvider"]
+        providers = ["CPUExecutionProvider"] if device == "cpu" else ["CUDAExecutionProvider"]
+        onnx_path = self._ensure_onnx_model()
         try:
-            ort_session = InferenceSession(self.model_path, providers=providers)
-            logger.info(":rocket: Using ONNX as MODEL frameworks!")
+            session = InferenceSession(str(onnx_path), providers=providers)
+            logger.info(f":rocket: Using ONNX as model backend! ({onnx_path.name})")
         except Exception as e:
-            logger.warning(f"🈳 Error loading ONNX model: {e}")
-            ort_session = self._create_onnx_model(providers)
-        return ort_session
+            raise RuntimeError(f"Failed to load ONNX model at {onnx_path}: {e}") from e
+        return FusedONNXRuntime(session, device)
 
-    def _create_onnx_model(self, providers):
-        from onnxruntime import InferenceSession
-        from torch.onnx import export
 
-        model = create_model(self.cfg.model, class_num=self.class_num, weight_path=self.cfg.weight).eval()
-        dummy_input = torch.ones((1, 3, *self.cfg.image_size))
-        export(
-            model,
-            dummy_input,
-            self.model_path,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+    def _ensure_onnx_model(self) -> Path:
+        if self._onnx_path and Path(self._onnx_path).exists():
+            return Path(self._onnx_path)
+        if self.weight_path is None:
+            raise ValueError("ONNX export requires a weight path")
+        if self.weight_path.suffix.lower() == ".onnx":
+            self._onnx_path = self.weight_path
+            return self.weight_path
+
+        weight_path = self.weight_path
+        batch_size = int(getattr(getattr(self.cfg.task, "data", None), "batch_size", 1))
+        dynamic_batch = bool(getattr(self.cfg.task, "dynamic_batch", False))
+        image_size_cfg = getattr(self.cfg, 'image_size', None)
+        if image_size_cfg is None:
+            image_size_cfg = getattr(getattr(self.cfg.task, 'data', None), 'image_size', None)
+        if image_size_cfg is None:
+            raise ValueError('image_size must be provided for ONNX export')
+        image_size = [int(image_size_cfg[0]), int(image_size_cfg[1])]
+
+        export_task = ExportConfig(
+            task="export",
+            batch_size=batch_size,
+            opset=13,
+            simplify=True,
+            half=False,
+            dynamic_batch=dynamic_batch,
+            apply_sigmoid=True,
+            include_metadata=True,
+            output_path=None,
+            image_size=image_size,
         )
-        logger.info(f":inbox_tray: ONNX model saved to {self.model_path}")
 
-        # Run onnxsim three times to simplify the exported graph if available
-        try:
-            import onnx  # type: ignore
-            from onnxsim import simplify  # type: ignore
+        export_cfg = deepcopy(self.cfg)
+        export_cfg.task = export_task
+        exporter = ONNXExporter(export_cfg, weight_path.parent)
+        target_path = exporter._resolve_output_path()
+        if not target_path.exists():
+            target_path = exporter.run()
+        self._onnx_path = target_path
+        return target_path
 
-            model_onnx = onnx.load(self.model_path)
-            for i in range(1, 4):
-                logger.info(f":twisted_rightwards_arrows: onnxsim pass {i}/3 ...")
-                model_onnx, check = simplify(model_onnx)
-                if not check:
-                    logger.warning(":warning: onnxsim reported check=False; stopping further passes.")
-                    break
-            onnx.save(model_onnx, self.model_path)
-            logger.info(f":white_check_mark: ONNX simplified and saved to {self.model_path}")
-        except Exception as e:
-            logger.warning(f":warning: Skip onnxsim optimization ({e}); using raw ONNX.")
-        return InferenceSession(self.model_path, providers=providers)
 
     def _load_trt_model(self):
         from torch2trt import TRTModule
@@ -123,3 +119,22 @@ class FastModelLoader:
         torch.save(model_trt.state_dict(), self.model_path)
         logger.info(f":inbox_tray: TensorRT model saved to {self.model_path}")
         return model_trt
+
+
+
+class FusedONNXRuntime:
+    def __init__(self, session, device):
+        self.session = session
+        self.device = device
+        self.input_name = session.get_inputs()[0].name
+        self.fused_onnx_output = True
+
+    def to(self, device):
+        self.device = device
+        return self
+
+    def __call__(self, x: Tensor):
+        input_cpu = x.detach().to('cpu')
+        outputs = self.session.run(None, {self.input_name: input_cpu.numpy()})
+        fused = torch.from_numpy(outputs[0]).to(x.device)
+        return {"Main": fused}
