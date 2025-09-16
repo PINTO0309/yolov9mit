@@ -358,7 +358,7 @@ weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.
 dataset=wholebody34 \
 task.nms.min_confidence=0.1 \
 task.fast_inference=onnx \
-task.data.source=data/wholebody25/images/val \
+task.data.source=data/wholebody34/images/val \
 task.render_labels=${RENDER_LABELS} \
 +quite=True
 ```
