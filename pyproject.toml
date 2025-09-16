@@ -27,9 +27,10 @@ dependencies = [
     "torch==2.8.0",
     "torchvision==0.23.0",
     "wandb==0.16.6",
-    "onnxruntime==1.22.1",
     "onnx==1.19.0",
     "onnxsim==0.4.30",
+    "sit4onnx==1.0.10",
+    "onnxruntime-gpu==1.22.0",
 ]
 
 [tool.setuptools.packages.find]
