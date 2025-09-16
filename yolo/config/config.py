@@ -103,6 +103,32 @@ class EMAConfig:
 
 
 @dataclass
+class KDTempConfig:
+    init: float
+    final: float
+    schedule: str
+
+
+@dataclass
+class KDWeightsConfig:
+    cls: float
+    dfl: float
+    box: float
+
+
+@dataclass
+class KDConfig:
+    enable: bool
+    teacher_model: str
+    teacher_weight: str
+    apply_to: str  # 'main' | 'aux' | 'both'
+    temperature: KDTempConfig
+    weights: KDWeightsConfig
+    teacher_fp16: bool
+    freeze_teacher: bool
+
+
+@dataclass
 class NMSConfig:
     min_confidence: float
     min_iou: float
@@ -135,8 +161,9 @@ class TrainConfig:
     loss: LossConfig
     scheduler: SchedulerConfig
     ema: EMAConfig
-    resume_ckpt: Optional[str] = None
     validation: ValidationConfig
+    resume_ckpt: Optional[str] = None
+    kd: Optional[KDConfig] = None
 
 
 @dataclass

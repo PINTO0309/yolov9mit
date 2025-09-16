@@ -241,6 +241,21 @@ dataset=wholebody34 \
 device=cuda \
 use_wandb=False \
 use_tensorboard=True
+
+# Online Knowledge Distillation (Teacher E → Student {C,S,T,N})
+# Default: task.kd.enable=False
+uv run python yolo/lazy.py \
+task=train \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+task.kd.enable=True \
+model=v9-${VARIANT} \
+weight=False \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
 ```
 
 ⚠️ **important points** ⚠️
