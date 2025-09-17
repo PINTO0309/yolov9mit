@@ -446,6 +446,23 @@ overridden the same way when invoking `yolo/lazy.py`.
 
 [tools/post_process_gen_tools](./tools/post_process_gen_tools)
 
+## Convert ONNX with NMS to LiteRT/TensorFlow.js
+If you want to use `webgpu`, you can use ONNX without NMS or TensorFlow.js models without NMS. If you don't want to go through ONNX, you can output the LiteRT model directly from PyTorch using [ai_edge_torch](https://github.com/google-ai-edge/ai-edge-torch).
+
+- ONNX to TF/LiteRT
+  ```bash
+  # Transformation with `Grouped Convolution` disabled
+  onnx2tf -i yolov9_n_wholebody25_post_0100_1x3x480x640.onnx -dgc
+  ```
+- TF to TFJS
+  ```bash
+  tensorflowjs_converter \
+  --input_format tf_saved_model \
+  --output_format tfjs_graph_model \
+  saved_model \
+  tfjs_model
+  ```
+
 ## Simple performance benchmark using ONNX/TensorRT
 
 ```bash
