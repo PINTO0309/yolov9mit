@@ -365,6 +365,7 @@ task.data.max_samples=100 \
 task.render_labels=${RENDER_LABELS} \
 +quite=True
 ```
+<img width="480" height="360" alt="frame074" src="https://github.com/user-attachments/assets/8e39420e-7357-4d70-9d08-a70b913c4341" />
 
 ### Validation
 
