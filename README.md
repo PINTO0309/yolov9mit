@@ -454,11 +454,11 @@ If you want to use `webgpu`, you can use ONNX without NMS or TensorFlow.js model
 - ONNX to TF/LiteRT
   ```bash
   # Transformation with `Grouped Convolution` disabled
-  onnx2tf -i yolov9_n_wholebody25_post_0100_1x3x480x640.onnx -dgc
+  uv run onnx2tf -i yolov9_n_wholebody25_post_0100_1x3x480x640.onnx -dgc
   ```
 - TF to TFJS
   ```bash
-  tensorflowjs_converter \
+  uv run tensorflowjs_converter \
   --input_format tf_saved_model \
   --output_format tfjs_graph_model \
   saved_model \
