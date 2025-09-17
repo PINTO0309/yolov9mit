@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, List, Mapping, Sequence, Tuple
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 import torch
 from omegaconf import DictConfig, OmegaConf
@@ -11,6 +11,13 @@ from yolo.config.config import Config, ExportConfig
 from yolo.model.yolo import create_model
 from yolo.utils.bounding_box_utils import generate_anchors
 from yolo.utils.logger import logger
+from yolo.model.module import Anchor2Vec
+
+
+EXPORT_SIGNATURE_KEY = "yolov9mit_export_version"
+EXPORT_SIGNATURE_VALUE = "2"
+EXPORT_ANCHOR_LAYOUT_KEY = "yolov9mit_anchor_layout"
+EXPORT_ANCHOR_LAYOUT_VALUE = "bcn"
 
 
 class EfficientONNXModule(torch.nn.Module):
@@ -32,9 +39,12 @@ class EfficientONNXModule(torch.nn.Module):
         strides = self._resolve_strides(model, anchor_cfg, width, height)
         anchor_grid, scaler = generate_anchors([width, height], strides)
 
-        self.register_buffer("anchor_grid", anchor_grid.to(dtype=torch.float32), persistent=False)
-        self.register_buffer("scaler", scaler.to(dtype=torch.float32).unsqueeze(-1), persistent=False)
-        self._slices = self._build_slices(width, height, strides)
+        anchor_grid = anchor_grid.to(dtype=torch.float32).transpose(0, 1).unsqueeze(0).contiguous()
+        scaler = scaler.to(dtype=torch.float32).view(1, 1, -1)
+
+        self.register_buffer("anchor_grid", anchor_grid, persistent=False)
+        self.register_buffer("scaler", scaler, persistent=False)
+        self.reg_max = getattr(anchor_cfg, "reg_max", None)
 
     @staticmethod
     def _resolve_strides(model: torch.nn.Module, anchor_cfg, width: int, height: int) -> List[int]:
@@ -52,43 +62,66 @@ class EfficientONNXModule(torch.nn.Module):
             resolved.append(int(stride))
         return resolved
 
-    @staticmethod
-    def _build_slices(width: int, height: int, strides: Iterable[int]) -> List[Tuple[int, int]]:
-        slices: List[Tuple[int, int]] = []
-        offset = 0
-        for stride in strides:
-            anchors = (width // stride) * (height // stride)
-            slices.append((offset, offset + anchors))
-            offset += anchors
-        return slices
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         predictions = self.model(x)["Main"]
-        cls_parts: List[torch.Tensor] = []
-        box_parts: List[torch.Tensor] = []
 
-        for (start, end), head in zip(self._slices, predictions):
+        cls_chunks: List[torch.Tensor] = []
+        dist_chunks: List[torch.Tensor] = []
+        logit_chunks: List[torch.Tensor] = []
+
+        reg_max = self.reg_max or 16
+
+        for head in predictions:
             cls_map, _, vec_map = head
-            batch, _, h, w = cls_map.shape
-            cls_flat = cls_map.reshape(batch, cls_map.size(1), -1).permute(0, 2, 1)
-            if self.apply_sigmoid:
-                cls_flat = cls_flat.sigmoid()
+            batch, channels, h, w = cls_map.shape
+            hw = h * w
+            cls_chunks.append(cls_map.reshape(batch, channels, hw))
 
-            vec_flat = vec_map.reshape(batch, 4, -1).permute(0, 2, 1)
-            scale = self.scaler[start:end].unsqueeze(0)
-            grid = self.anchor_grid[start:end].unsqueeze(0)
-            dist = vec_flat * scale
-            lt = dist[..., :2]
-            rb = dist[..., 2:]
-            boxes = torch.cat([grid - lt, grid + rb], dim=-1)
+            if vec_map.ndim == 5:
+                reg_bins = vec_map.shape[2]
+                logit_chunks.append(vec_map.reshape(batch, 4, reg_bins, hw))
+            elif vec_map.shape[1] == 4 * reg_max:
+                logit_chunks.append(vec_map.reshape(batch, 4, reg_max, hw))
+            else:
+                dist_map = self._vector_to_distance(vec_map)
+                dist_chunks.append(dist_map.reshape(batch, 4, hw))
 
-            cls_parts.append(cls_flat)
-            box_parts.append(boxes)
+        cls_tensor = torch.cat(cls_chunks, dim=2)
 
-        cls_tensor = torch.cat(cls_parts, dim=1)
-        box_tensor = torch.cat(box_parts, dim=1)
-        fused = torch.cat([box_tensor, cls_tensor], dim=-1)
-        return fused.permute(0, 2, 1)
+        if logit_chunks:
+            logits = torch.cat(logit_chunks, dim=-1)
+            dist_tensor = self._logits_to_distance(logits)
+        else:
+            dist_tensor = torch.cat(dist_chunks, dim=2)
+
+        if self.apply_sigmoid:
+            cls_tensor = cls_tensor.sigmoid()
+
+        dist = dist_tensor * self.scaler
+        lt = dist[:, :2]
+        rb = dist[:, 2:]
+        grid = self.anchor_grid
+        box_tensor = torch.cat([grid - lt, grid + rb], dim=1)
+
+        fused = torch.cat([box_tensor, cls_tensor], dim=1)
+        return fused
+
+    def _vector_to_distance(self, vec_map: torch.Tensor) -> torch.Tensor:
+        """Convert either raw logits or projected distances to LTRB format."""
+        if vec_map.ndim == 4:
+            return vec_map
+
+        raise ValueError(f"Unexpected vector map ndim={vec_map.ndim}")
+
+    def _logits_to_distance(self, logits: torch.Tensor) -> torch.Tensor:
+        """Convert concatenated logits [B, 4, R, N] to distances [B, 4, N]."""
+        if logits.ndim != 4:
+            raise ValueError(f"Expected logits to be 4-D [B,4,R,N], got shape {tuple(logits.shape)}")
+        probs = logits.softmax(dim=2)
+        reg_max = logits.shape[2]
+        bins = torch.arange(reg_max, device=logits.device, dtype=logits.dtype).view(1, 1, reg_max, 1)
+        dist = torch.sum(probs * bins, dim=2)
+        return dist
 
 
 class ONNXExporter:
@@ -111,6 +144,8 @@ class ONNXExporter:
             class_num=self.cfg.dataset.class_num,
             weight_path=self.cfg.weight,
         ).eval().to("cpu")
+
+        self._enable_export_mode(model)
 
         width, height = self._resolve_image_size()
 
@@ -152,6 +187,12 @@ class ONNXExporter:
         features = self.cfg.dataset.class_num + 4
         logger.info(f"✅ ONNX export complete (output dims: batch x {features} x {anchors})")
         return export_path
+
+    @staticmethod
+    def _enable_export_mode(model: torch.nn.Module) -> None:
+        for module in model.modules():
+            if isinstance(module, Anchor2Vec):
+                module.set_export_mode(True)
 
     def _resolve_image_size(self) -> Tuple[int, int]:
         raw_size = getattr(self.task_cfg, "image_size", None)
@@ -221,10 +262,8 @@ class ONNXExporter:
 
     def _post_process(self, onnx_path: Path) -> None:
         raw_names = getattr(self.cfg.dataset, "class_list", None)
-        need_meta = bool(raw_names) and self.task_cfg.include_metadata
+        want_names = bool(raw_names) and self.task_cfg.include_metadata
         need_simplify = self.task_cfg.simplify
-        if not need_meta and not need_simplify:
-            return
 
         try:
             import onnx
@@ -253,23 +292,38 @@ class ONNXExporter:
             except Exception as exc:
                 logger.warning(f"⚠️ Skipping onnxsim simplification: {exc}")
 
-        if need_meta:
+        meta: Dict[str, str] = {
+            EXPORT_SIGNATURE_KEY: EXPORT_SIGNATURE_VALUE,
+            EXPORT_ANCHOR_LAYOUT_KEY: EXPORT_ANCHOR_LAYOUT_VALUE,
+            "feature_layout": "channels_first",
+        }
+
+        if want_names:
             try:
                 from onnx.helper import set_model_props
 
                 class_list = [str(name) for name in list(raw_names)]
-                meta = {
-                    "class_count": str(self.cfg.dataset.class_num),
-                    "names": json.dumps(class_list),
-                }
+                meta.update(
+                    {
+                        "class_count": str(self.cfg.dataset.class_num),
+                        "names": json.dumps(class_list),
+                    }
+                )
                 set_model_props(model_onnx, meta)
                 updated = True
             except Exception as exc:
                 logger.warning(f"⚠️ Could not embed metadata: {exc}")
+        else:
+            try:
+                from onnx.helper import set_model_props
+
+                set_model_props(model_onnx, meta)
+                updated = True
+            except Exception as exc:
+                logger.warning(f"⚠️ Could not embed export signature: {exc}")
 
         if updated:
             try:
                 onnx.save(model_onnx, str(onnx_path))
             except Exception as exc:
                 logger.warning(f"⚠️ Failed to save post-processed ONNX: {exc}")
-

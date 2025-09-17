@@ -166,12 +166,22 @@ class MultiheadSegmentation(nn.Module):
 class Anchor2Vec(nn.Module):
     def __init__(self, reg_max: int = 16) -> None:
         super().__init__()
+        self.reg_max = reg_max
         reverse_reg = torch.arange(reg_max, dtype=torch.float32).view(1, reg_max, 1, 1, 1)
         self.anc2vec = nn.Conv3d(in_channels=reg_max, out_channels=1, kernel_size=1, bias=False)
         self.anc2vec.weight = nn.Parameter(reverse_reg, requires_grad=False)
+        self.export_mode = False
+
+    def set_export_mode(self, mode: bool = True) -> None:
+        """Enable a lightweight path that skips expectation projection for ONNX export."""
+        self.export_mode = mode
 
     def forward(self, anchor_x: Tensor) -> Tensor:
+        if self.export_mode:
+            return anchor_x, anchor_x
+
         anchor_x = rearrange(anchor_x, "B (P R) h w -> B R P h w", P=4)
+
         vector_x = anchor_x.softmax(dim=1)
         vector_x = self.anc2vec(vector_x)[:, 0]
         return anchor_x, vector_x

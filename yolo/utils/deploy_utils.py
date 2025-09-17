@@ -6,7 +6,13 @@ from torch import Tensor
 
 from yolo.config.config import Config, ExportConfig
 from yolo.model.yolo import create_model
-from yolo.tools.exporter import ONNXExporter
+from yolo.tools.exporter import (
+    ONNXExporter,
+    EXPORT_ANCHOR_LAYOUT_KEY,
+    EXPORT_ANCHOR_LAYOUT_VALUE,
+    EXPORT_SIGNATURE_KEY,
+    EXPORT_SIGNATURE_VALUE,
+)
 from yolo.utils.logger import logger
 
 
@@ -62,6 +68,11 @@ class FastModelLoader:
             raise ValueError("ONNX export requires a weight path")
         if self.weight_path.suffix.lower() == ".onnx":
             self._onnx_path = self.weight_path
+            if not self._onnx_has_fused_signature(self._onnx_path):
+                logger.warning(
+                    ":warning: The provided ONNX file lacks yolov9mit fusion metadata. "
+                    "Re-export with task=export for best performance."
+                )
             return self.weight_path
 
         weight_path = self.weight_path
@@ -91,10 +102,29 @@ class FastModelLoader:
         export_cfg.task = export_task
         exporter = ONNXExporter(export_cfg, weight_path.parent)
         target_path = exporter._resolve_output_path()
-        if not target_path.exists():
+        if not target_path.exists() or not self._onnx_has_fused_signature(target_path):
             target_path = exporter.run()
         self._onnx_path = target_path
         return target_path
+
+    def _onnx_has_fused_signature(self, path: Path) -> bool:
+        try:
+            import onnx
+        except Exception as exc:
+            logger.warning(f"⚠️ Unable to import ONNX to verify export signature: {exc}")
+            return False
+
+        try:
+            model = onnx.load(str(path))
+        except Exception as exc:
+            logger.warning(f"⚠️ Failed to read ONNX file at {path}: {exc}")
+            return False
+
+        props = {prop.key: prop.value for prop in getattr(model, "metadata_props", [])}
+        if props.get(EXPORT_SIGNATURE_KEY) == EXPORT_SIGNATURE_VALUE and props.get(EXPORT_ANCHOR_LAYOUT_KEY) == EXPORT_ANCHOR_LAYOUT_VALUE:
+            return True
+
+        return False
 
 
     def _load_trt_model(self):
