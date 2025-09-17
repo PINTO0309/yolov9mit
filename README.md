@@ -511,7 +511,7 @@ INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
 # With NMS + TensorRT
 # For models with dynamic tensors as input, specify the size of the tensor
 # to be tested using the --fixed_shapes / -fs option.
-sit4onnx -if yolov9_n_wholebody25_post_0100_1x3xHxW.onnx -oep tensorrt -fs 1 3 480 640
+uv run sit4onnx -if yolov9_n_wholebody25_post_0100_1x3xHxW.onnx -oep tensorrt -fs 1 3 480 640
 
 INFO: file: yolov9_n_wholebody25_post_0100_1x3x480x640.onnx
 INFO: providers: ['TensorrtExecutionProvider', 'CPUExecutionProvider']
