@@ -111,8 +111,8 @@ class EfficientONNXModule(torch.nn.Module):
             cls_tensor = cls_tensor.sigmoid()
 
         dist = dist_tensor * self.scaler.to(dist_tensor.dtype)
-        coeff = self.dist_to_box.to(dist.dtype)
-        combo = torch.matmul(dist.permute(0, 2, 1), coeff.T).permute(0, 2, 1)
+        coeff = self.dist_to_box.to(dist.dtype).unsqueeze(0)
+        combo = torch.matmul(coeff, dist)
         box_tensor = combo + self.box_bias.to(dist.dtype)
 
         fused = torch.cat([box_tensor, cls_tensor], dim=1)
