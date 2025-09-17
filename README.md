@@ -442,6 +442,10 @@ Key overrides (all optional):
 Other global defaults (`device`, `out_path`, etc.) still apply via `config/general.yaml` and can be
 overridden the same way when invoking `yolo/lazy.py`.
 
+## Generate and merge post-processing with NMS
+
+[tools/post_process_gen_tools](./tools/post_process_gen_tools)
+
 ## Simple performance benchmark using ONNX/TensorRT
 
 ```bash
