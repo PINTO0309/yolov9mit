@@ -373,4 +373,5 @@ do
     rm 0*_*.onnx
     rm 1*_*.onnx
     rm ${MODEL_NAME}_${SUFFIX}${H}x${W}_prep.onnx
+    rm -rf saved_model_postprocess
 done
