@@ -505,6 +505,20 @@ INFO: total elapsed time:  104.28452491760254 ms
 INFO: avg elapsed time per pred:  10.428452491760254 ms
 INFO: output_name.1: output shape: [1, 38, 8400] dtype: float32
 ```
+```bash
+# With NMS + TensorRT
+# For models with dynamic tensors as input, specify the size of the tensor
+# to be tested using the --fixed_shapes / -fs option.
+sit4onnx -if yolov9_n_wholebody25_post_0100_1x3xHxW.onnx -oep tensorrt -fs 1 3 480 640
+
+INFO: file: yolov9_n_wholebody25_post_0100_1x3x480x640.onnx
+INFO: providers: ['TensorrtExecutionProvider', 'CPUExecutionProvider']
+INFO: input_name.1: input_bgr shape: [1, 3, 480, 640] dtype: float32
+INFO: test_loop_count: 10
+INFO: total elapsed time:  20.3857421875 ms
+INFO: avg elapsed time per pred:  2.03857421875 ms
+INFO: output_name.1: batchno_classid_score_x1y1x2y2 shape: [0, 7] dtype: float32
+```
 
 ## Contributing
 
