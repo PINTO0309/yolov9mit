@@ -446,6 +446,8 @@ overridden the same way when invoking `yolo/lazy.py`.
 
 [tools/post_process_gen_tools](./tools/post_process_gen_tools)
 
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/6b6233d7-e218-4ad0-bd6a-855cf8397312" />
+
 ## Convert ONNX with NMS to LiteRT/TensorFlow.js
 If you want to use `webgpu`, you can use ONNX without NMS or TensorFlow.js models without NMS. If you don't want to go through ONNX, you can output the LiteRT model directly from PyTorch using [ai_edge_torch](https://github.com/google-ai-edge/ai-edge-torch).
 
