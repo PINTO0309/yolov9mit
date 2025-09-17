@@ -466,7 +466,15 @@ class FusedONNXConverter:
             features = fused.permute(0, 2, 1)
         else:
             raise ValueError("Unexpected fused tensor shape")
-        boxes = features[:, :4, :].permute(0, 2, 1)
+        cxcywh = features[:, :4, :]
+        cx, cy, w, h = cxcywh.split(1, dim=1)
+        half_w = w * 0.5
+        half_h = h * 0.5
+        x1 = cx - half_w
+        y1 = cy - half_h
+        x2 = cx + half_w
+        y2 = cy + half_h
+        boxes = torch.cat([x1, y1, x2, y2], dim=1).permute(0, 2, 1)
         classes = features[:, 4:, :].permute(0, 2, 1)
         return classes, None, boxes
 

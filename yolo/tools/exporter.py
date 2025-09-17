@@ -46,6 +46,19 @@ class EfficientONNXModule(torch.nn.Module):
         self.register_buffer("scaler", scaler, persistent=False)
         self.reg_max = getattr(anchor_cfg, "reg_max", None)
 
+        coeff = torch.tensor(
+            [
+                [-0.5, 0.0, 0.5, 0.0],
+                [0.0, -0.5, 0.0, 0.5],
+                [1.0, 0.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        self.register_buffer("dist_to_box", coeff, persistent=False)
+        box_bias = torch.cat([anchor_grid, torch.zeros_like(anchor_grid)], dim=1)
+        self.register_buffer("box_bias", box_bias, persistent=False)
+
     @staticmethod
     def _resolve_strides(model: torch.nn.Module, anchor_cfg, width: int, height: int) -> List[int]:
         strides = getattr(anchor_cfg, "strides", None)
@@ -97,11 +110,10 @@ class EfficientONNXModule(torch.nn.Module):
         if self.apply_sigmoid:
             cls_tensor = cls_tensor.sigmoid()
 
-        dist = dist_tensor * self.scaler
-        lt = dist[:, :2]
-        rb = dist[:, 2:]
-        grid = self.anchor_grid
-        box_tensor = torch.cat([grid - lt, grid + rb], dim=1)
+        dist = dist_tensor * self.scaler.to(dist_tensor.dtype)
+        coeff = self.dist_to_box.to(dist.dtype)
+        combo = torch.matmul(dist.permute(0, 2, 1), coeff.T).permute(0, 2, 1)
+        box_tensor = combo + self.box_bias.to(dist.dtype)
 
         fused = torch.cat([box_tensor, cls_tensor], dim=1)
         return fused
