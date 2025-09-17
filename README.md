@@ -423,6 +423,10 @@ task.apply_sigmoid=True \
 task.include_metadata=True
 ```
 
+- `output: [batch, [cx,cy,w,h,class_scores], anchors]`
+    <img width="1307" height="756" alt="image" src="https://github.com/user-attachments/assets/0fe37232-d327-4516-9467-23ab411c1018" />
+
+
 Key overrides (all optional):
 - `task.batch_size`: dummy input batch size (default 1).
 - `task.dynamic_batch`: `true` marks batch as symbolic `N` and names the file accordingly.
