@@ -217,6 +217,71 @@ class RandomCrop:
         return image, boxes
 
 
+class RandomScale:
+    """Randomly scales the image while adjusting bounding boxes."""
+
+    def __init__(
+        self,
+        prob: float = 0.5,
+        scale_range=(0.8, 1.2),
+        keep_aspect_ratio: bool = True,
+        resample: int = Image.Resampling.BILINEAR,
+    ) -> None:
+        self.prob = prob
+        if isinstance(scale_range, (int, float)):
+            scale_range = (float(scale_range), float(scale_range))
+        if len(scale_range) != 2:
+            raise ValueError("scale_range must contain exactly two values (min, max).")
+        self.scale_min = float(scale_range[0])
+        self.scale_max = float(scale_range[1])
+        if self.scale_min <= 0 or self.scale_max <= 0:
+            raise ValueError("scale_range values must be positive.")
+        self.keep_aspect_ratio = keep_aspect_ratio
+        self.resample = resample
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return image, boxes
+
+        scale_x = torch.empty(1).uniform_(self.scale_min, self.scale_max).item()
+        if self.keep_aspect_ratio:
+            scale_y = scale_x
+        else:
+            scale_y = torch.empty(1).uniform_(self.scale_min, self.scale_max).item()
+
+        new_width = max(1, int(round(width * scale_x)))
+        new_height = max(1, int(round(height * scale_y)))
+
+        if new_width == width and new_height == height:
+            return image, boxes
+
+        image = image.resize((new_width, new_height), self.resample)
+
+        if boxes.numel() == 0:
+            return image, boxes
+
+        boxes = boxes.clone()
+        boxes[:, [1, 3]] = boxes[:, [1, 3]] * width
+        boxes[:, [2, 4]] = boxes[:, [2, 4]] * height
+
+        ratio_x = new_width / width
+        ratio_y = new_height / height
+        boxes[:, [1, 3]] *= ratio_x
+        boxes[:, [2, 4]] *= ratio_y
+
+        boxes[:, [1, 3]] = boxes[:, [1, 3]].clamp(0, new_width)
+        boxes[:, [2, 4]] = boxes[:, [2, 4]].clamp(0, new_height)
+
+        boxes[:, [1, 3]] /= new_width
+        boxes[:, [2, 4]] /= new_height
+
+        return image, boxes
+
+
 class RandomBrightness:
     """Randomly adjust image brightness within a factor range."""
 
