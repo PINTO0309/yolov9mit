@@ -177,16 +177,6 @@ class YOLORichProgressBar(RichProgressBar):
     def validation_description(self) -> str:
         return "[green]Validation"
 
-
-class UnderscoreModelCheckpoint(ModelCheckpoint):
-    @override
-    def format_checkpoint_name(
-        self, metrics: Dict[str, torch.Tensor], filename: Optional[str] = None, ver: Optional[int] = None
-    ) -> str:
-        checkpoint_name = super().format_checkpoint_name(metrics, filename=filename, ver=ver)
-        return checkpoint_name.replace("=", "_").replace("-", "_")
-
-
 class YOLORichModelSummary(RichModelSummary):
     @staticmethod
     @override
@@ -299,7 +289,10 @@ def setup(cfg: Config):
 
     if hasattr(cfg.task, "ema") and cfg.task.ema.enable:
         progress.append(EMA(cfg.task.ema.decay))
-    progress.append(UnderscoreModelCheckpoint(filename="epoch_{epoch}_step_{step}"))
+    ckpt_callback = ModelCheckpoint(filename="{epoch:04d}_{step:07d}")
+    ckpt_callback.CHECKPOINT_JOIN_CHAR = "_"
+    ckpt_callback.CHECKPOINT_EQUALS_CHAR = "_"
+    progress.append(ckpt_callback)
     # Save best and last .pt files alongside .ckpt directory
     progress.append(SaveBestWeights())
     if quite:
