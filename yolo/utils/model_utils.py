@@ -63,8 +63,16 @@ class EMA(Callback):
     def on_train_batch_end(self, trainer: "Trainer", pl_module: "LightningModule", *args, **kwargs) -> None:
         self.step += 1
         decay_factor = self.decay * (1 - exp(-self.step / self.tau))
+        if self.ema_state_dict is None:
+            # Initialize EMA weights the first time we see a batch. We clone to
+            # avoid future in-place updates affecting the model parameters.
+            self.ema_state_dict = {k: v.detach().clone() for k, v in pl_module.model.state_dict().items()}
+
         for key, param in pl_module.model.state_dict().items():
-            self.ema_state_dict[key] = lerp(param.detach(), self.ema_state_dict[key], decay_factor)
+            ema_tensor = self.ema_state_dict[key]
+            if isinstance(ema_tensor, torch.Tensor) and ema_tensor.device != param.device:
+                ema_tensor = ema_tensor.to(param.device, non_blocking=True)
+            self.ema_state_dict[key] = lerp(param.detach(), ema_tensor, decay_factor)
 
     def state_dict(self) -> dict:
         state = {"step": self.step, "tau": self.tau, "decay": self.decay}
