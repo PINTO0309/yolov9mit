@@ -17,10 +17,18 @@ data:
     # Mosaic: 1.0
     # MixUp: 1.0
     # HorizontalFlip: 0.5
+
+    # This RandomScale setting is an extreme setting optimized for wholebodyXX.
+    # Therefore, you should adjust the zoom factor appropriately according
+    # to the characteristics of your custom dataset.
+    # e.g. wholebodyXX: small 629,173 (77.1%)・medium 128,762 (15.8%)・large 58,531 (7.2%)
+    #######################################################################
     RandomScale:
       prob: 0.5
       scale_range: [0.9, 1.5]
       keep_aspect_ratio: true
+    #######################################################################
+
     RandomCrop: 0.5
     RandomHSV:
       prob: 0.5
