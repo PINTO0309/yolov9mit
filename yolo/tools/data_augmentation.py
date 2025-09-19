@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
@@ -186,6 +186,113 @@ class MixUp:
         return TF.to_pil_image(mixed_image), merged_boxes
 
 
+class CopyPaste:
+    """Naive Copy-Paste augmentation that pastes random objects from other images."""
+
+    def __init__(
+        self,
+        prob: float = 0.3,
+        *,
+        sample_num: int = 1,
+        max_paste_objects: int = 5,
+        scale_jitter: Optional[Sequence[float]] = (0.8, 1.2),
+    ) -> None:
+        self.prob = prob
+        self.sample_num = max(1, int(sample_num))
+        self.max_paste_objects = max(1, int(max_paste_objects))
+        self.parent = None
+        if scale_jitter is not None:
+            if len(scale_jitter) != 2:
+                raise ValueError("scale_jitter must have exactly two values (min, max)")
+            self.scale_jitter = (float(scale_jitter[0]), float(scale_jitter[1]))
+        else:
+            self.scale_jitter = None
+
+    def set_parent(self, parent):
+        self.parent = parent
+
+    def __call__(self, image: Image.Image, boxes: torch.Tensor):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        if self.parent is None:
+            return image, boxes
+
+        base_w, base_h = image.size
+        if base_w <= 1 or base_h <= 1:
+            return image, boxes
+
+        dtype = boxes.dtype if boxes.numel() else torch.float32
+        pasted_boxes = []
+
+        helpers = self.parent.get_more_data(self.sample_num)
+        for helper_image, helper_boxes in helpers:
+            if helper_boxes.numel() == 0:
+                continue
+
+            helper_w, helper_h = helper_image.size
+            if helper_w <= 1 or helper_h <= 1:
+                continue
+
+            helper_abs = helper_boxes.clone().to(dtype)
+            helper_abs[:, [1, 3]] *= helper_w
+            helper_abs[:, [2, 4]] *= helper_h
+
+            num_objects = helper_abs.shape[0]
+            if num_objects == 0:
+                continue
+
+            pick = torch.randperm(num_objects)[: self.max_paste_objects]
+            for idx in pick:
+                cls, x1, y1, x2, y2 = helper_abs[idx].tolist()
+                x1_i, y1_i, x2_i, y2_i = int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))
+                if x2_i - x1_i < 2 or y2_i - y1_i < 2:
+                    continue
+
+                crop = helper_image.crop((x1_i, y1_i, x2_i, y2_i))
+                crop_w, crop_h = crop.size
+                if crop_w <= 1 or crop_h <= 1:
+                    continue
+
+                if self.scale_jitter is not None:
+                    factor = float(torch.empty(1).uniform_(self.scale_jitter[0], self.scale_jitter[1]).item())
+                    factor = max(0.1, factor)
+                    new_w = max(1, int(round(crop_w * factor)))
+                    new_h = max(1, int(round(crop_h * factor)))
+                    crop = crop.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                    crop_w, crop_h = crop.size
+
+                if crop_w >= base_w or crop_h >= base_h:
+                    continue
+
+                max_x = base_w - crop_w
+                max_y = base_h - crop_h
+                if max_x <= 0 or max_y <= 0:
+                    continue
+
+                offset_x = int(torch.randint(0, max_x + 1, (1,)).item())
+                offset_y = int(torch.randint(0, max_y + 1, (1,)).item())
+
+                image.paste(crop, (offset_x, offset_y))
+
+                x1_new = offset_x / base_w
+                y1_new = offset_y / base_h
+                x2_new = (offset_x + crop_w) / base_w
+                y2_new = (offset_y + crop_h) / base_h
+
+                new_box = torch.tensor([cls, x1_new, y1_new, x2_new, y2_new], dtype=dtype)
+                new_box[1:] = new_box[1:].clamp(0.0, 1.0)
+                pasted_boxes.append(new_box)
+
+        if pasted_boxes:
+            pasted_tensor = torch.stack(pasted_boxes)
+            if boxes.numel():
+                boxes = torch.cat([boxes, pasted_tensor.to(boxes.dtype)], dim=0)
+            else:
+                boxes = pasted_tensor
+
+        return image, boxes
+
+
 class RandomCrop:
     """Randomly crops the image to half its size along with adjusting the bounding boxes."""
 
@@ -213,6 +320,102 @@ class RandomCrop:
 
             boxes[:, [1, 3]] /= crop_width
             boxes[:, [2, 4]] /= crop_height
+
+        return image, boxes
+
+
+class Translation:
+    """Translate image and boxes by random offsets with optional border padding."""
+
+    def __init__(
+        self,
+        prob: float = 0.5,
+        translate: float = 0.1,
+        *,
+        border: Sequence[int] = (0, 0),
+        fill: Optional[Sequence[int]] = (114, 114, 114),
+    ) -> None:
+        self.prob = prob
+        self.translate = max(0.0, float(translate))
+        if len(border) != 2:
+            raise ValueError("border must provide vertical and horizontal padding")
+        self.border = (int(border[0]), int(border[1]))
+        if fill is None:
+            self.fill = None
+        else:
+            if len(fill) not in (1, 3):
+                raise ValueError("fill must be length 1 or 3 when provided")
+            self.fill = tuple(int(v) for v in fill)
+
+    def __call__(self, image: Image.Image, boxes: torch.Tensor):
+        if torch.rand(1) >= self.prob or self.translate <= 0.0:
+            return image, boxes
+
+        try:
+            import cv2
+        except Exception as e:
+            raise RuntimeError("OpenCV is required for Translation. Install `opencv-python`.") from e
+
+        np_image = np.array(image)
+        if np_image.ndim != 3:
+            return image, boxes
+
+        h0, w0, _ = np_image.shape
+        if h0 <= 1 or w0 <= 1:
+            return image, boxes
+
+        border_h, border_w = self.border
+        height = h0 + border_h * 2
+        width = w0 + border_w * 2
+
+        tx = torch.empty(1).uniform_(0.5 - self.translate, 0.5 + self.translate).item() * width
+        ty = torch.empty(1).uniform_(0.5 - self.translate, 0.5 + self.translate).item() * height
+
+        C = np.eye(3, dtype=np.float32)
+        C[0, 2] = -w0 / 2.0
+        C[1, 2] = -h0 / 2.0
+
+        T = np.eye(3, dtype=np.float32)
+        T[0, 2] = tx
+        T[1, 2] = ty
+
+        M = T @ C
+        affine = M[:2]
+
+        border_value = self.fill if self.fill is not None else 0
+        translated = cv2.warpAffine(
+            np_image,
+            affine,
+            dsize=(width, height),
+            flags=cv2.INTER_LINEAR,
+            borderValue=border_value,
+        )
+
+        image = Image.fromarray(translated)
+
+        if boxes.numel():
+            dtype = boxes.dtype
+            boxes_abs = boxes.clone().to(torch.float32)
+            boxes_abs[:, [1, 3]] *= w0
+            boxes_abs[:, [2, 4]] *= h0
+
+            shift_x = tx - (w0 / 2.0)
+            shift_y = ty - (h0 / 2.0)
+            boxes_abs[:, [1, 3]] += shift_x
+            boxes_abs[:, [2, 4]] += shift_y
+
+            boxes_abs[:, [1, 3]] = boxes_abs[:, [1, 3]].clamp(0.0, float(width))
+            boxes_abs[:, [2, 4]] = boxes_abs[:, [2, 4]].clamp(0.0, float(height))
+
+            widths = boxes_abs[:, 3] - boxes_abs[:, 1]
+            heights = boxes_abs[:, 4] - boxes_abs[:, 2]
+            keep = (widths > 1e-6) & (heights > 1e-6)
+            boxes_abs = boxes_abs[keep]
+
+            boxes_abs[:, [1, 3]] /= float(width)
+            boxes_abs[:, [2, 4]] /= float(height)
+
+            boxes = boxes_abs.to(dtype)
 
         return image, boxes
 
@@ -702,3 +905,214 @@ class RandomSunFlare:
             return image, boxes
         except Exception as e:
             raise RuntimeError("Albumentations is required for RandomSunFlare. Install `albumentations`." ) from e
+
+
+class RandomResizedCrop:
+    """Albumentations RandomResizedCrop wrapper that keeps bounding boxes consistent."""
+
+    def __init__(
+        self,
+        prob: float = 0.5,
+        *,
+        height: int = 640,
+        width: int = 640,
+        scale: Sequence[float] = (0.8, 1.0),
+        ratio: Sequence[float] = (0.75, 1.33),
+        min_visibility: float = 0.0,
+        min_area: float = 0.0,
+        interpolation: Optional[object] = None,
+    ) -> None:
+        self.prob = prob
+        self.height = int(height)
+        self.width = int(width)
+        if len(scale) != 2:
+            raise ValueError("scale must contain exactly two values (min, max).")
+        if len(ratio) != 2:
+            raise ValueError("ratio must contain exactly two values (min, max).")
+        self.scale = (float(scale[0]), float(scale[1]))
+        self.ratio = (float(ratio[0]), float(ratio[1]))
+        self.min_visibility = float(min_visibility)
+        self.min_area = float(min_area)
+        self.interpolation = interpolation
+        self._transform = None
+
+    def _resolve_interpolation(self, cv2_module):
+        interp = self.interpolation
+        if interp is None:
+            return cv2_module.INTER_LINEAR
+        if isinstance(interp, str):
+            attr = f"INTER_{interp.upper()}"
+            if hasattr(cv2_module, attr):
+                return getattr(cv2_module, attr)
+            raise ValueError(f"Unsupported interpolation string: {interp}")
+        if isinstance(interp, int):
+            return int(interp)
+        resampling = getattr(Image, "Resampling", None)
+        if resampling is not None and isinstance(interp, resampling):
+            mapping = {
+                resampling.NEAREST: cv2_module.INTER_NEAREST,
+                resampling.BILINEAR: cv2_module.INTER_LINEAR,
+                resampling.BICUBIC: cv2_module.INTER_CUBIC,
+                resampling.BOX: cv2_module.INTER_AREA,
+                resampling.HAMMING: cv2_module.INTER_LINEAR,
+                resampling.LANCZOS: cv2_module.INTER_LANCZOS4,
+            }
+            return mapping.get(interp, cv2_module.INTER_LINEAR)
+        # Fallback
+        return cv2_module.INTER_LINEAR
+
+    def _get_transform(self):
+        if self._transform is None:
+            try:
+                import albumentations as A
+                import cv2
+            except Exception as e:
+                raise RuntimeError("Albumentations is required for RandomResizedCrop. Install `albumentations`.") from e
+
+            interpolation = self._resolve_interpolation(cv2)
+            self._transform = A.Compose(
+                [
+                    A.RandomResizedCrop(
+                        height=self.height,
+                        width=self.width,
+                        scale=self.scale,
+                        ratio=self.ratio,
+                        interpolation=interpolation,
+                    )
+                ],
+                bbox_params=A.BboxParams(
+                    format="pascal_voc",
+                    label_fields=["labels"],
+                    min_visibility=self.min_visibility,
+                    min_area=self.min_area,
+                    clip=True,
+                ),
+            )
+        return self._transform
+
+    def __call__(self, image: Image.Image, boxes: torch.Tensor):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+
+        transform = self._get_transform()
+        image_np = np.array(image)
+        orig_w, orig_h = image.size
+        dtype = boxes.dtype if boxes.numel() else torch.float32
+
+        if boxes.numel():
+            abs_boxes = boxes.clone()
+            abs_boxes[:, [1, 3]] *= orig_w
+            abs_boxes[:, [2, 4]] *= orig_h
+            bbox_list = abs_boxes[:, 1:5].tolist()
+            labels = boxes[:, 0].tolist()
+        else:
+            bbox_list = []
+            labels = []
+
+        augmented = transform(image=image_np, bboxes=bbox_list, labels=labels)
+        aug_image = Image.fromarray(augmented["image"])
+        aug_w, aug_h = aug_image.size
+        aug_boxes = augmented.get("bboxes", [])
+        aug_labels = augmented.get("labels", labels)
+
+        if aug_boxes:
+            boxes_tensor = torch.tensor(aug_boxes, dtype=dtype)
+            labels_tensor = torch.tensor(aug_labels, dtype=dtype)
+            result = torch.zeros((boxes_tensor.shape[0], 5), dtype=dtype)
+            result[:, 0] = labels_tensor
+            result[:, 1] = boxes_tensor[:, 0] / max(aug_w, 1)
+            result[:, 2] = boxes_tensor[:, 1] / max(aug_h, 1)
+            result[:, 3] = boxes_tensor[:, 2] / max(aug_w, 1)
+            result[:, 4] = boxes_tensor[:, 3] / max(aug_h, 1)
+            result[:, 1:] = result[:, 1:].clamp(0.0, 1.0)
+        else:
+            result = torch.zeros((0, 5), dtype=dtype)
+
+        return aug_image, result
+
+
+class MedianBlur:
+    """Albumentations MedianBlur wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.1, blur_limit: Sequence[int] = (3, 7)):
+        self.prob = prob
+        self.blur_limit = blur_limit
+
+    def _prepare_blur_limit(self) -> Union[Tuple[int, int], int]:
+        def _ensure_odd(value: int) -> int:
+            value = max(3, value)
+            return value if value % 2 else value + 1
+
+        if isinstance(self.blur_limit, (list, tuple)):
+            low = _ensure_odd(int(self.blur_limit[0]))
+            high = _ensure_odd(int(self.blur_limit[1]))
+            if high < low:
+                high = low
+            return (low, high)
+        return _ensure_odd(int(self.blur_limit))
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            Cls = A.MedianBlur
+            kwargs = {"p": 1.0}
+            blur_limit = self._prepare_blur_limit()
+            if "blur_limit" in inspect.signature(Cls.__init__).parameters:
+                kwargs["blur_limit"] = blur_limit
+            aug = Cls(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for MedianBlur. Install `albumentations`." ) from e
+
+
+class ToGray:
+    """Albumentations ToGray wrapper (image-only)."""
+
+    def __init__(self, prob: float = 0.05):
+        self.prob = prob
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            aug = A.ToGray(p=1.0)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for ToGray. Install `albumentations`." ) from e
+
+
+class CLAHE:
+    """Albumentations CLAHE wrapper (image-only)."""
+
+    def __init__(
+        self,
+        prob: float = 0.05,
+        *,
+        clip_limit: float = 4.0,
+        tile_grid_size: Sequence[int] = (8, 8),
+    ) -> None:
+        self.prob = prob
+        self.clip_limit = float(clip_limit)
+        if len(tile_grid_size) != 2:
+            raise ValueError("tile_grid_size must be a sequence of length 2")
+        self.tile_grid_size = (int(tile_grid_size[0]), int(tile_grid_size[1]))
+
+    def __call__(self, image, boxes):
+        if torch.rand(1) >= self.prob:
+            return image, boxes
+        try:
+            import albumentations as A
+
+            kwargs = {"p": 1.0, "clip_limit": self.clip_limit, "tile_grid_size": self.tile_grid_size}
+            aug = A.CLAHE(**kwargs)
+            image = _albu_apply(image, aug)
+            return image, boxes
+        except Exception as e:
+            raise RuntimeError("Albumentations is required for CLAHE. Install `albumentations`." ) from e
