@@ -15,3 +15,5 @@ nms:
 
 # Whether to print per-class mAP on validation end
 print_map_per_class: False
+
+skip_metric_when_empty: true

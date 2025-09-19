@@ -154,6 +154,3 @@ kd:
     box: 0.25
   teacher_fp16: true
   freeze_teacher: true
-
-validation:
-  skip_metric_when_empty: true
