@@ -279,6 +279,7 @@ class StreamDataLoader:
 
         self.transform = AugmentationComposer([], data_cfg.image_size)
         self.stop_event = Event()
+        self._frame_index = 0
 
         if self.is_stream:
             import cv2
@@ -313,7 +314,7 @@ class StreamDataLoader:
         image = Image.open(image_path).convert("RGB")
         if image is None:
             raise ValueError(f"Error loading image: {image_path}")
-        return self.process_frame(image)
+        return self.process_frame(image, source_path=image_path, is_single_image=True)
 
     def load_video_file(self, video_path):
         import cv2
@@ -323,11 +324,11 @@ class StreamDataLoader:
             ret, frame = cap.read()
             if not ret:
                 break
-            if not self.process_frame(frame):
+            if not self.process_frame(frame, source_path=self.source):
                 break
         cap.release()
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, source_path=None, is_single_image: bool = False):
         if self.max_samples is not None and self._loaded_samples >= self.max_samples:
             self.stop_event.set()
             self.running = False
@@ -342,11 +343,17 @@ class StreamDataLoader:
         frame, _, rev_tensor = self.transform(frame, torch.zeros(0, 5))
         frame = frame[None]
         rev_tensor = rev_tensor[None]
+        meta = {
+            "source_path": str(source_path) if source_path is not None else None,
+            "frame_index": self._frame_index,
+            "is_single_image": bool(is_single_image),
+        }
+        self._frame_index += 1
         self._loaded_samples += 1
         if not self.is_stream:
-            self.queue.put((frame, rev_tensor, origin_frame))
+            self.queue.put((frame, rev_tensor, origin_frame, meta))
         else:
-            self.current_frame = (frame, rev_tensor, origin_frame)
+            self.current_frame = (frame, rev_tensor, origin_frame, meta)
         if self.max_samples is not None and self._loaded_samples >= self.max_samples:
             self.stop_event.set()
             if self.is_stream:
@@ -368,7 +375,7 @@ class StreamDataLoader:
             if not ret:
                 self.stop()
                 raise StopIteration
-            if not self.process_frame(frame):
+            if not self.process_frame(frame, source_path=self.source):
                 self.stop()
                 raise StopIteration
             self._returned_samples += 1

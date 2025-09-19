@@ -562,7 +562,11 @@ class InferenceModel(BaseModel):
         return self.predict_loader
 
     def predict_step(self, batch, batch_idx):
-        images, rev_tensor, origin_frame = batch
+        if len(batch) == 4:
+            images, rev_tensor, origin_frame, meta = batch
+        else:
+            images, rev_tensor, origin_frame = batch
+            meta = {}
         predicts = self.post_process(self(images), rev_tensor=rev_tensor)
         # Draw only box outlines during inference (no fill)
         render_labels = getattr(self.cfg.task, "render_labels", True)
@@ -578,10 +582,26 @@ class InferenceModel(BaseModel):
         else:
             fps = None
         if getattr(self.cfg.task, "save_predict", None):
-            self._save_image(img, batch_idx)
+            self._save_image(img, batch_idx, meta)
         return img, fps
 
-    def _save_image(self, img, batch_idx):
-        save_image_path = Path(self.trainer.default_root_dir) / f"frame{batch_idx:03d}.png"
+    def _save_image(self, img, batch_idx, meta=None):
+        save_dir = Path(self.trainer.default_root_dir)
+        filename = f"frame{batch_idx:03d}.png"
+        source_path = None
+        is_single_image = False
+        if isinstance(meta, dict):
+            source_path = meta.get("source_path")
+            is_single_image = bool(meta.get("is_single_image"))
+        if source_path and is_single_image:
+            stem = Path(source_path).stem
+            filename = f"{stem}.png"
+            save_image_path = save_dir / filename
+            counter = 1
+            while save_image_path.exists():
+                save_image_path = save_dir / f"{stem}_{counter}.png"
+                counter += 1
+        else:
+            save_image_path = save_dir / filename
         img.save(save_image_path)
         print(f"💾 Saved visualize image at {save_image_path}")
