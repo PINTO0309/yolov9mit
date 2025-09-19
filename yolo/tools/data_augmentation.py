@@ -1036,14 +1036,24 @@ class MedianBlur:
 
     def __init__(self, prob: float = 0.1, blur_limit: Sequence[int] = (3, 7)):
         self.prob = prob
-        self.blur_limit = blur_limit
+        self.blur_limit = self._normalize_blur_limit(blur_limit)
+
+    def _normalize_blur_limit(self, blur_limit: Sequence[int]) -> Union[Tuple[int, int], int]:
+        if isinstance(blur_limit, Sequence) and not isinstance(blur_limit, (str, bytes)):
+            values = [int(v) for v in list(blur_limit)]
+            if not values:
+                raise ValueError("blur_limit sequence must not be empty")
+            if len(values) == 1:
+                return values[0]
+            return (values[0], values[1])
+        return int(blur_limit)
 
     def _prepare_blur_limit(self) -> Union[Tuple[int, int], int]:
         def _ensure_odd(value: int) -> int:
             value = max(3, value)
             return value if value % 2 else value + 1
 
-        if isinstance(self.blur_limit, (list, tuple)):
+        if isinstance(self.blur_limit, tuple):
             low = _ensure_odd(int(self.blur_limit[0]))
             high = _ensure_odd(int(self.blur_limit[1]))
             if high < low:
