@@ -64,9 +64,27 @@ class ValidateModel(BaseModel):
         batch_size, images, targets, rev_tensor, img_paths = batch
         H, W = images.shape[2:]
         predicts = self.post_process(self.ema(images), image_size=[W, H])
-        mAP = self.metric(
-            [to_metrics_format(predict) for predict in predicts], [to_metrics_format(target) for target in targets]
-        )
+        pred_list = [to_metrics_format(predict) for predict in predicts]
+        tgt_list = [to_metrics_format(target) for target in targets]
+
+        if getattr(self.validation_cfg, "skip_metric_when_empty", False):
+            filtered_pairs = []
+            for pred_dict, tgt_dict in zip(pred_list, tgt_list):
+                pred_boxes = pred_dict.get("boxes")
+                tgt_boxes = tgt_dict.get("boxes")
+                if pred_boxes is None or tgt_boxes is None:
+                    continue
+                if pred_boxes.numel() == 0 or tgt_boxes.numel() == 0:
+                    continue
+                filtered_pairs.append((pred_dict, tgt_dict))
+
+            if filtered_pairs:
+                filtered_preds, filtered_tgts = zip(*filtered_pairs)
+                mAP = self.metric(list(filtered_preds), list(filtered_tgts))
+            else:
+                mAP = self.metric.compute()
+        else:
+            mAP = self.metric(pred_list, tgt_list)
         return predicts, mAP
 
     def on_validation_epoch_end(self):
