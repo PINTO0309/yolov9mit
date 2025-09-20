@@ -61,6 +61,8 @@ class DataConfig:
     source: Optional[Union[str, int]]
     dynamic_shape: Optional[bool] = None
     max_samples: Optional[int] = None
+    class_biased_oversampling: Optional[bool] = False
+    class_biased_batch_formation: Optional[bool] = False
 
 
 @dataclass

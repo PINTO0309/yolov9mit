@@ -12,6 +12,8 @@ data:
   cpu_num: ${cpu_num}
   shuffle: True
   pin_memory: True
+  class_biased_oversampling: false
+  class_biased_batch_formation: false
   data_augment:
     RemoveOutliers: 1e-8
     # Mosaic: 1.0

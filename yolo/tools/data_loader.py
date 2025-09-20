@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 from queue import Empty, Queue
 from statistics import mean
@@ -7,9 +8,12 @@ from typing import Generator, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from PIL import Image
+import random
 from rich.progress import track
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import BatchSampler, DataLoader, Dataset
+
+SIZE_THRESHOLDS = (32 * 32, 96 * 96)
 
 from yolo.config.config import DataConfig, DatasetConfig
 from yolo.tools.data_augmentation import *
@@ -49,7 +53,56 @@ class YoloDataset(Dataset):
                 transforms.append(cls(params))
         self.transform = AugmentationComposer(transforms, self.image_size, self.base_size)
         self.transform.get_more_data = self.get_more_data
-        self.img_paths, self.bboxes, self.ratios = tensorlize(self.load_data(Path(dataset_cfg.path), phase_name))
+        dataset_path = Path(dataset_cfg.path)
+        raw_data = self.load_data(dataset_path, phase_name)
+
+        self.size_stats = None
+        self.global_bucket_share = {"small": 0.0, "medium": 0.0, "large": 0.0}
+        self.bucket_to_indices = {"small": [], "medium": [], "large": []}
+        self.rare_buckets: List[str] = []
+
+        is_train_phase = phase.startswith("train")
+        oversample_enabled = bool(getattr(data_cfg, "class_biased_oversampling", False) and is_train_phase)
+        batch_bias_enabled = bool(getattr(data_cfg, "class_biased_batch_formation", False) and is_train_phase)
+
+        pre_stats = None
+        post_stats = None
+        total_duplicates = 0
+        bucket_deltas = {"small": 0, "medium": 0, "large": 0}
+
+        if is_train_phase and (oversample_enabled or batch_bias_enabled):
+            pre_stats = self._compute_size_statistics(raw_data, dataset_path, dataset_cfg)
+
+        if oversample_enabled and pre_stats is not None:
+            raw_data, post_stats, total_duplicates, bucket_deltas = self._apply_class_biased_oversampling(
+                raw_data, pre_stats, dataset_cfg
+            )
+        else:
+            post_stats = pre_stats
+
+        if is_train_phase and (oversample_enabled or batch_bias_enabled) and pre_stats is not None:
+            self._log_size_distribution(pre_stats, post_stats, dataset_cfg)
+
+        if oversample_enabled and pre_stats is not None:
+            pre_share = self._compute_global_share(pre_stats["global_bucket_counts"])
+            post_share = self._compute_global_share(post_stats["global_bucket_counts"])
+            summary = ", ".join(
+                f"{bucket}:Δ{int(bucket_deltas.get(bucket, 0))}" for bucket in ("small", "medium", "large")
+            )
+            logger.info(
+                f":repeat: Applied class_biased_oversampling (duplicates={total_duplicates}, dataset size {len(pre_stats['image_bucket_tags'])} -> {len(raw_data)})."
+            )
+            logger.info(
+                ":bar_chart: Global size share "
+                f"before (S={pre_share['small']:.3f}, M={pre_share['medium']:.3f}, L={pre_share['large']:.3f}) "
+                f"after (S={post_share['small']:.3f}, M={post_share['medium']:.3f}, L={post_share['large']:.3f}); "
+                f"increments {summary}"
+            )
+
+        if post_stats is not None:
+            self._finalize_size_statistics(post_stats, dataset_cfg)
+
+        self.img_paths, self.bboxes, self.ratios = tensorlize(raw_data)
 
     def load_data(self, dataset_path: Path, phase_name: str):
         """
@@ -188,6 +241,290 @@ class YoloDataset(Dataset):
         indices = torch.randint(0, len(self), (num,))
         return [self.get_data(idx)[:2] for idx in indices]
 
+    def _resolve_image_path(self, img_path, dataset_path: Path) -> Path:
+        p = Path(img_path)
+        if p.exists():
+            return p
+        candidate = dataset_path / p
+        return candidate if candidate.exists() else p
+
+    @staticmethod
+    def _bucket_from_area(area: float) -> str:
+        if area < SIZE_THRESHOLDS[0]:
+            return "small"
+        if area < SIZE_THRESHOLDS[1]:
+            return "medium"
+        return "large"
+
+    def _compute_size_statistics(self, data, dataset_path: Path, dataset_cfg: DatasetConfig):
+        class_num = int(getattr(dataset_cfg, "class_num", 0) or 0)
+        if class_num <= 0:
+            return None
+
+        class_bucket_counts = [defaultdict(int) for _ in range(class_num)]
+        class_bucket_indices = [defaultdict(set) for _ in range(class_num)]
+        image_class_bucket_counts: List[dict] = []
+        image_bucket_tags: List[set] = []
+        global_bucket_counts = defaultdict(int)
+        image_size_cache = {}
+
+        if data:
+            iterator = track(
+                enumerate(data),
+                total=len(data),
+                description="Analyzing dataset size buckets",
+            )
+        else:
+            iterator = enumerate(data)
+
+        for idx, (img_path, labels, _) in iterator:
+            per_image_counts = defaultdict(int)
+            tags: set = set()
+
+            if isinstance(labels, torch.Tensor):
+                boxes = labels.to(torch.float32)
+            else:
+                boxes = torch.tensor(labels, dtype=torch.float32)
+
+            if boxes.numel() == 0:
+                image_class_bucket_counts.append(dict(per_image_counts))
+                image_bucket_tags.append(tags)
+                continue
+
+            real_path = self._resolve_image_path(img_path, dataset_path)
+            if real_path not in image_size_cache:
+                try:
+                    with Image.open(real_path) as img:
+                        image_size_cache[real_path] = img.size
+                except Exception:
+                    logger.warning(
+                        f":warning: Failed to read image size for {real_path}, skipping statistics contribution"
+                    )
+                    image_class_bucket_counts.append(dict(per_image_counts))
+                    image_bucket_tags.append(tags)
+                    continue
+
+            width, height = image_size_cache[real_path]
+            if width <= 0 or height <= 0:
+                image_class_bucket_counts.append(dict(per_image_counts))
+                image_bucket_tags.append(tags)
+                continue
+
+            for box in boxes:
+                cls = int(box[0].item())
+                if cls < 0 or cls >= class_num:
+                    continue
+                x1, y1, x2, y2 = box[1:5].clamp(0.0, 1.0)
+                bw = max((x2 - x1) * width, 0.0)
+                bh = max((y2 - y1) * height, 0.0)
+                area = bw * bh
+                if area <= 0:
+                    continue
+                bucket = self._bucket_from_area(area)
+                per_image_counts[(cls, bucket)] += 1
+                tags.add(bucket)
+                class_bucket_counts[cls][bucket] += 1
+                class_bucket_indices[cls][bucket].add(idx)
+                global_bucket_counts[bucket] += 1
+
+            image_class_bucket_counts.append(dict(per_image_counts))
+            image_bucket_tags.append(tags)
+
+        return {
+            "class_bucket_counts": class_bucket_counts,
+            "class_bucket_indices": class_bucket_indices,
+            "image_class_bucket_counts": image_class_bucket_counts,
+            "image_bucket_tags": image_bucket_tags,
+            "global_bucket_counts": global_bucket_counts,
+        }
+
+    def _log_size_distribution(self, pre_stats, post_stats, dataset_cfg: DatasetConfig):
+        if pre_stats is None or post_stats is None:
+            return
+
+        class_num = int(getattr(dataset_cfg, "class_num", 0) or 0)
+        if class_num <= 0:
+            return
+
+        class_names = getattr(dataset_cfg, "class_list", None)
+        if not isinstance(class_names, (list, tuple)) or len(class_names) < class_num:
+            class_names = [f"class_{i}" for i in range(class_num)]
+
+        header = (
+            f"{'Class':<18}{'Pre-S':>10}{'Pre-M':>10}{'Pre-L':>10}"
+            f"{'Post-S':>10}{'Post-M':>10}{'Post-L':>10}"
+        )
+        lines = [header, "-" * len(header)]
+
+        for cls_idx in range(class_num):
+            name = str(class_names[cls_idx]) if cls_idx < len(class_names) else f"class_{cls_idx}"
+            pre_counts = pre_stats["class_bucket_counts"][cls_idx] if pre_stats else {}
+            post_counts = post_stats["class_bucket_counts"][cls_idx] if post_stats else {}
+            pre_small = int(pre_counts.get("small", 0))
+            pre_medium = int(pre_counts.get("medium", 0))
+            pre_large = int(pre_counts.get("large", 0))
+            post_small = int(post_counts.get("small", 0))
+            post_medium = int(post_counts.get("medium", 0))
+            post_large = int(post_counts.get("large", 0))
+            lines.append(
+                f"{name:<18}{pre_small:>10}{pre_medium:>10}{pre_large:>10}{post_small:>10}{post_medium:>10}{post_large:>10}"
+            )
+
+        pre_global = pre_stats["global_bucket_counts"] if pre_stats else defaultdict(int)
+        post_global = post_stats["global_bucket_counts"] if post_stats else defaultdict(int)
+        lines.append("-" * len(header))
+        lines.append(
+            f"{'TOTAL':<18}"
+            f"{int(pre_global.get('small', 0)):>10}"
+            f"{int(pre_global.get('medium', 0)):>10}"
+            f"{int(pre_global.get('large', 0)):>10}"
+            f"{int(post_global.get('small', 0)):>10}"
+            f"{int(post_global.get('medium', 0)):>10}"
+            f"{int(post_global.get('large', 0)):>10}"
+        )
+        table_text = "\n".join(lines)
+        logger.info(":bar_chart: Size distribution per class (pre vs. post adjustment)\n" + table_text)
+
+    @staticmethod
+    def _compute_global_share(global_bucket_counts) -> dict:
+        total = sum(int(v) for v in global_bucket_counts.values())
+        if total <= 0:
+            return {"small": 0.0, "medium": 0.0, "large": 0.0}
+        return {
+            "small": int(global_bucket_counts.get("small", 0)) / total,
+            "medium": int(global_bucket_counts.get("medium", 0)) / total,
+            "large": int(global_bucket_counts.get("large", 0)) / total,
+        }
+
+    def _finalize_size_statistics(self, stats, dataset_cfg: DatasetConfig):
+        self.size_stats = stats
+        self.global_bucket_share = self._compute_global_share(stats["global_bucket_counts"])
+
+        bucket_to_indices = {"small": [], "medium": [], "large": []}
+        for idx, tags in enumerate(stats["image_bucket_tags"]):
+            for bucket in tags:
+                bucket_to_indices.setdefault(bucket, []).append(idx)
+
+        for bucket, indices in bucket_to_indices.items():
+            random.shuffle(indices)
+
+        self.bucket_to_indices = bucket_to_indices
+        self.rare_buckets = self._select_rare_buckets(self.global_bucket_share, bucket_to_indices)
+
+    @staticmethod
+    def _select_rare_buckets(global_share: dict, bucket_to_indices: dict) -> List[str]:
+        available = {bucket: global_share.get(bucket, 0.0) for bucket in ("small", "medium", "large") if bucket_to_indices.get(bucket)}
+        if not available:
+            return []
+        threshold = 0.2
+        rare = [bucket for bucket, share in available.items() if share <= threshold]
+        if not rare:
+            rare = [min(available, key=available.get)]
+        return rare
+
+    def _apply_class_biased_oversampling(self, data, stats, dataset_cfg: DatasetConfig):
+        """Duplicate images for rarity-compensation after analysing per-class size distribution."""
+
+        class_num = int(getattr(dataset_cfg, "class_num", 0) or 0)
+        if class_num <= 0 or stats is None:
+            logger.warning(":warning: class_biased_oversampling requested but dataset statistics are unavailable; skipping")
+            return data, stats, 0, {"small": 0, "medium": 0, "large": 0}
+
+        max_dup_factor = 5
+        growth_tolerance = 0.1  # require >10% deficit before increasing
+
+        class_bucket_counts = stats["class_bucket_counts"]
+        class_bucket_indices = stats["class_bucket_indices"]
+        image_class_bucket_counts = stats["image_class_bucket_counts"]
+        image_bucket_tags = stats["image_bucket_tags"]
+        global_bucket_counts = stats["global_bucket_counts"]
+
+        total_global = sum(int(v) for v in global_bucket_counts.values())
+        if total_global == 0:
+            logger.warning(":warning: class_biased_oversampling found no valid bounding boxes; skipping")
+            return data, stats, 0, {"small": 0, "medium": 0, "large": 0}
+
+        global_share = self._compute_global_share(global_bucket_counts)
+        eps = 1e-9
+        for bucket, ratio in list(global_share.items()):
+            if ratio <= 0:
+                global_share[bucket] = eps
+
+        image_multipliers = [1] * len(data)
+        for cls, counts in enumerate(class_bucket_counts):
+            if not counts:
+                continue
+            class_total = sum(int(v) for v in counts.values())
+            if class_total <= 0:
+                continue
+            for bucket in ("small", "medium", "large"):
+                count = int(counts.get(bucket, 0))
+                if count <= 0:
+                    continue
+                expected = class_total * global_share.get(bucket, eps)
+                ratio = expected / count if count > 0 else 0.0
+                if ratio <= 1.0 + growth_tolerance:
+                    continue
+                dup_factor = min(int(np.ceil(ratio)), max_dup_factor)
+                if dup_factor <= 1:
+                    continue
+                for img_idx in class_bucket_indices[cls][bucket]:
+                    image_multipliers[img_idx] = max(image_multipliers[img_idx], dup_factor)
+
+        if all(factor == 1 for factor in image_multipliers):
+            return data, stats, 0, {"small": 0, "medium": 0, "large": 0}
+
+        expanded_indices: List[int] = []
+        for idx, factor in enumerate(image_multipliers):
+            expanded_indices.extend([idx] * factor)
+        random.shuffle(expanded_indices)
+
+        new_data = []
+        new_image_class_counts: List[dict] = []
+        new_image_bucket_tags: List[set] = []
+        new_class_bucket_counts = [defaultdict(int) for _ in range(class_num)]
+        new_class_bucket_indices = [defaultdict(set) for _ in range(class_num)]
+        new_global_counts = defaultdict(int)
+
+        if expanded_indices:
+            iterator_new = track(
+                enumerate(expanded_indices),
+                total=len(expanded_indices),
+                description="Applying class-biased oversampling",
+            )
+        else:
+            iterator_new = enumerate(expanded_indices)
+
+        for new_idx, original_idx in iterator_new:
+            item = data[original_idx]
+            per_image_counts = image_class_bucket_counts[original_idx]
+            if not isinstance(per_image_counts, dict):
+                per_image_counts = dict(per_image_counts)
+            tags = image_bucket_tags[original_idx]
+            new_data.append(item)
+            new_image_class_counts.append(dict(per_image_counts))
+            new_image_bucket_tags.append(set(tags))
+            for (cls, bucket), count in per_image_counts.items():
+                new_class_bucket_counts[cls][bucket] += int(count)
+                new_class_bucket_indices[cls][bucket].add(new_idx)
+                new_global_counts[bucket] += int(count)
+
+        total_duplicates = sum(max(f - 1, 0) for f in image_multipliers)
+        bucket_deltas = {
+            bucket: int(new_global_counts.get(bucket, 0)) - int(global_bucket_counts.get(bucket, 0))
+            for bucket in ("small", "medium", "large")
+        }
+
+        post_stats = {
+            "class_bucket_counts": new_class_bucket_counts,
+            "class_bucket_indices": new_class_bucket_indices,
+            "image_class_bucket_counts": new_image_class_counts,
+            "image_bucket_tags": new_image_bucket_tags,
+            "global_bucket_counts": new_global_counts,
+        }
+
+        return new_data, post_stats, total_duplicates, bucket_deltas
+
     def _update_image_size(self, idx: int) -> None:
         """Update image size based on dynamic shape and batch settings."""
         batch_start_idx = (idx // self.batch_size) * self.batch_size
@@ -210,6 +547,102 @@ class YoloDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.bboxes)
+
+
+class ClassBiasedBatchSampler(BatchSampler):
+    def __init__(self, dataset: YoloDataset, batch_size: int, drop_last: bool = False):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        if self.batch_size <= 0:
+            raise ValueError("batch_size should be a positive integer")
+
+        generator_seed = torch.initial_seed()
+        rng = random.Random(generator_seed)
+
+        all_indices = list(range(len(self.dataset)))
+        rng.shuffle(all_indices)
+
+        rare_buckets = [
+            bucket
+            for bucket in getattr(self.dataset, "rare_buckets", [])
+            if self.dataset.bucket_to_indices.get(bucket)
+        ]
+
+        bucket_orders = {}
+        bucket_positions = {}
+        for bucket in rare_buckets:
+            pool = list(self.dataset.bucket_to_indices.get(bucket, []))
+            rng.shuffle(pool)
+            bucket_orders[bucket] = pool
+            bucket_positions[bucket] = 0
+
+        used = set()
+        pointer = 0
+        num_indices = len(all_indices)
+
+        while pointer < num_indices:
+            batch = []
+
+            for bucket in rare_buckets:
+                idx = self._pop_bucket_idx(bucket, bucket_orders, bucket_positions, used, rng)
+                if idx is not None and idx not in batch:
+                    batch.append(idx)
+                    used.add(idx)
+
+            while len(batch) < self.batch_size and pointer < num_indices:
+                idx = all_indices[pointer]
+                pointer += 1
+                if idx in used:
+                    continue
+                batch.append(idx)
+                used.add(idx)
+
+            if len(batch) < self.batch_size and self.drop_last:
+                break
+
+            if batch:
+                yield batch
+
+        remaining = [idx for idx in all_indices if idx not in used]
+        current = []
+        for idx in remaining:
+            current.append(idx)
+            if len(current) == self.batch_size:
+                yield current
+                current = []
+        if current and not self.drop_last:
+            yield current
+
+    def __len__(self):
+        if self.drop_last:
+            return len(self.dataset) // self.batch_size
+        return (len(self.dataset) + self.batch_size - 1) // self.batch_size
+
+    @staticmethod
+    def _pop_bucket_idx(bucket, bucket_orders, bucket_positions, used, rng):
+        pool = bucket_orders.get(bucket)
+        if not pool:
+            return None
+        pos = bucket_positions.get(bucket, 0)
+        total = len(pool)
+        attempts = 0
+        while attempts < total:
+            if pos >= len(pool):
+                rng.shuffle(pool)
+                bucket_orders[bucket] = pool
+                pos = 0
+            idx = pool[pos]
+            pos += 1
+            attempts += 1
+            if idx in used:
+                continue
+            bucket_positions[bucket] = pos
+            return idx
+        bucket_positions[bucket] = pos
+        return None
 
 
 def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[Tensor, List[Tensor]]:
@@ -249,6 +682,20 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
     if getattr(dataset_cfg, "auto_download", False):
         prepare_dataset(dataset_cfg, task)
     dataset = YoloDataset(data_cfg, dataset_cfg, task)
+
+    use_class_biased_batch = bool(
+        task.startswith("train") and getattr(data_cfg, "class_biased_batch_formation", False)
+    )
+
+    if use_class_biased_batch:
+        batch_sampler = ClassBiasedBatchSampler(dataset, data_cfg.batch_size)
+        return DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=data_cfg.cpu_num,
+            pin_memory=data_cfg.pin_memory,
+            collate_fn=collate_fn,
+        )
 
     return DataLoader(
         dataset,
