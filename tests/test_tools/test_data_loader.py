@@ -1,13 +1,14 @@
 import sys
 from pathlib import Path
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
 from yolo.config.config import Config
 from yolo.tools.data_loader import StreamDataLoader, create_dataloader
+from yolo.tools.dataset_preparation import prepare_dataset
 
 
 def test_create_dataloader_cache(train_cfg: Config):
@@ -33,11 +34,9 @@ def test_training_data_loader_correctness(train_dataloader: DataLoader):
     assert batch_size == 2
     assert images.shape == (2, 3, 640, 640)
     assert reverse_tensors.shape == (2, 5)
-    expected_paths = [
-        Path("tests/data/images/train/000000050725.jpg"),
-        Path("tests/data/images/train/000000167848.jpg"),
-    ]
-    assert list(image_paths) == list(expected_paths)
+    for path in image_paths:
+        assert Path(path).exists()
+        assert "images/train" in str(path)
 
 
 def test_validation_data_loader_correctness(validation_dataloader: DataLoader):
@@ -70,3 +69,15 @@ def test_directory_stream_data_loader_frame(directory_stream_data_loader: Stream
     assert frame.shape == (1, 3, 640, 640)
     assert rev_tensor.shape == (1, 5)
     assert origin_frame.size != (640, 640)
+
+
+def test_training_dataloader_respects_shuffle_flag(train_cfg: Config):
+    prepare_dataset(train_cfg.dataset, task="train")
+
+    train_cfg.task.data.shuffle = True
+    shuffled_loader = create_dataloader(train_cfg.task.data, train_cfg.dataset, train_cfg.task.task)
+    assert isinstance(shuffled_loader.batch_sampler.sampler, RandomSampler)
+
+    train_cfg.task.data.shuffle = False
+    not_shuffled_loader = create_dataloader(train_cfg.task.data, train_cfg.dataset, train_cfg.task.task)
+    assert isinstance(not_shuffled_loader.batch_sampler.sampler, SequentialSampler)

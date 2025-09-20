@@ -687,6 +687,9 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
         task.startswith("train") and getattr(data_cfg, "class_biased_batch_formation", False)
     )
 
+    is_training_task = isinstance(task, str) and task.lower().startswith("train")
+    shuffle_data = bool(getattr(data_cfg, "shuffle", False)) if is_training_task else False
+
     if use_class_biased_batch:
         batch_sampler = ClassBiasedBatchSampler(dataset, data_cfg.batch_size)
         return DataLoader(
@@ -703,6 +706,7 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
         num_workers=data_cfg.cpu_num,
         pin_memory=data_cfg.pin_memory,
         collate_fn=collate_fn,
+        shuffle=shuffle_data,
     )
 
 
