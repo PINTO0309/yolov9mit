@@ -12,6 +12,7 @@ Example:
 """
 
 import logging
+import os
 from collections import deque
 from logging import FileHandler
 from pathlib import Path
@@ -284,6 +285,10 @@ def setup(cfg: Config):
     wandb.errors.term._log = custom_wandb_log
 
     save_path = validate_log_directory(cfg, cfg.name)
+    if save_path is None:
+        # Non-zero ranks skip the rank_zero_only body; ensure they still know the log directory
+        save_path = Path(cfg.out_path, cfg.task.task) / cfg.name
+        save_path.mkdir(parents=True, exist_ok=True)
 
     progress, loggers = [], []
 
@@ -302,11 +307,13 @@ def setup(cfg: Config):
     progress.append(YOLORichProgressBar())
     progress.append(YOLORichModelSummary())
     progress.append(ImageLogger())
-    if cfg.use_tensorboard:
-        loggers.append(TensorBoardLogger(log_graph="all", save_dir=save_path))
-    if cfg.use_wandb:
+
+    is_rank_zero = os.getenv("RANK", "0") == "0"
+    if cfg.use_tensorboard and is_rank_zero:
+        loggers.append(TensorBoardLogger(log_graph="all", save_dir=str(save_path)))
+    if cfg.use_wandb and is_rank_zero:
         wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-        loggers.append(WandbLogger(project="YOLO", name=cfg.name, save_dir=save_path, id=None, config=wandb_cfg))
+        loggers.append(WandbLogger(project="YOLO", name=cfg.name, save_dir=str(save_path), id=None, config=wandb_cfg))
 
     return progress, loggers, save_path
 
