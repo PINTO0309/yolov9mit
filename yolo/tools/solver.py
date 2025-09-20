@@ -56,6 +56,12 @@ class ValidateModel(BaseModel):
             class_num=self.cfg.dataset.class_num,
         )
         self.post_process = PostProcess(self.vec2box, self.validation_cfg.nms)
+        self.loss_fn = None
+        if hasattr(self.cfg.task, "loss"):
+            try:
+                self.loss_fn = create_loss_function(self.cfg, self.vec2box)
+            except Exception as exc:
+                logger.warning(f":warning: Validation loss logging disabled (failed to load loss fn): {exc}")
 
     def val_dataloader(self):
         return self.val_loader
@@ -63,7 +69,22 @@ class ValidateModel(BaseModel):
     def validation_step(self, batch, batch_idx):
         batch_size, images, targets, rev_tensor, img_paths = batch
         H, W = images.shape[2:]
-        predicts = self.post_process(self.ema(images), image_size=[W, H])
+        ema_outputs = self.ema(images)
+        if self.loss_fn is not None:
+            self.vec2box.update([W, H])
+            aux_predicts = self.vec2box(ema_outputs["AUX"])
+            main_predicts = self.vec2box(ema_outputs["Main"])
+            val_loss, _ = self.loss_fn(aux_predicts, main_predicts, targets)
+            self.log(
+                "Loss/val_total",
+                val_loss.detach(),
+                prog_bar=True,
+                on_step=False,
+                on_epoch=True,
+                sync_dist=True,
+                batch_size=batch_size,
+            )
+        predicts = self.post_process(ema_outputs, image_size=[W, H])
         pred_list = [to_metrics_format(predict) for predict in predicts]
         tgt_list = [to_metrics_format(target) for target in targets]
 
@@ -371,7 +392,8 @@ class TrainModel(ValidateModel):
 
     def setup(self, stage):
         super().setup(stage)
-        self.loss_fn = create_loss_function(self.cfg, self.vec2box)
+        if self.loss_fn is None:
+            self.loss_fn = create_loss_function(self.cfg, self.vec2box)
         # Optional: load teacher for online KD
         self.kd_cfg = getattr(self.cfg.task, "kd", None)
         self.teacher = None
