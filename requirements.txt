@@ -13,4 +13,5 @@ requests==2.28.2
 rich==13.4.2
 torch==2.8.0+cu126
 torchvision==0.22.0+cu126
+torchmetrics==1.8.2
 wandb==0.16.6

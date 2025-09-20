@@ -318,7 +318,7 @@ epy = [
 
 [[package]]
 name = "faster-coco-eval"
-version = "1.6.5"
+version = "1.6.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -326,14 +326,14 @@ dependencies = [
     { name = "pillow" },
     { name = "plotly" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/aa/2d1ec7f1dff56f7306ead37292506d194558227c137054875e4c83eec000/faster_coco_eval-1.6.5.tar.gz", hash = "sha256:51c20207ebbd7a9fbf16113ffe39749355e0888c5ed274f2771da71ee347cb8f", size = 65649, upload-time = "2024-11-03T16:39:07.077Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/fb/3a044460657e1d7a8aacede084407e5b5507b428fde9c0ca9f6f94a1392b/faster_coco_eval-1.6.7.tar.gz", hash = "sha256:155a324431dff5ade373905740f7d58a73203d7c85c2cf970bbfe684013ce555", size = 86489, upload-time = "2025-06-11T00:01:05.362Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/bf/3dd66b3190553646463848fd02bc1aa22fd502d51b85aea751547fea4040/faster_coco_eval-1.6.5-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:0602b3349c2cf71383eb23b94b0e44718733e94cbd34c46d6020b5a695e3b427", size = 364305, upload-time = "2024-11-03T16:38:17.771Z" },
-    { url = "https://files.pythonhosted.org/packages/83/3c/ac5da0dac2a9d313e8bda4af4606fb3008066fa8dba35876bfc739502577/faster_coco_eval-1.6.5-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a80e5173c1718fa5feed85496d8cf98aa84509a3efb90f55bfb13ad248d99de2", size = 339795, upload-time = "2024-11-03T16:38:19.47Z" },
-    { url = "https://files.pythonhosted.org/packages/18/2c/a6138bb3a1c0934efd647e7f2adb9bfc01cbbde3334d5e1ec9e3ecd97a4e/faster_coco_eval-1.6.5-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:04412f420a4242254d39ad9d95147c8dcb9c6a8f1e06922f6a64a137917fb57a", size = 451503, upload-time = "2024-11-03T16:38:20.562Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/b8/c7744f0868db73db78fd741d8fbb576dc46894bf7a182bdb0d3a0e8bb583/faster_coco_eval-1.6.5-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1575b6d7f82e5f2d808f7cac51602b3c930297dac9a66d16d845a09dd326131a", size = 470855, upload-time = "2024-11-03T16:38:21.967Z" },
-    { url = "https://files.pythonhosted.org/packages/f2/18/61a17b09ecaacec3b4f285d3f83dc4f5fc15065edf13efdb27e16c820b97/faster_coco_eval-1.6.5-cp310-cp310-win_amd64.whl", hash = "sha256:99f271dfdc1b5769d34108c1f0fa6aaebe161be626a5fad69b87d87ca98bc53d", size = 300061, upload-time = "2024-11-03T16:38:23.031Z" },
-    { url = "https://files.pythonhosted.org/packages/70/88/96c5da1549976d6e904939de4abfe2f8c3ece605bf1a83d1a6d7e2fec653/faster_coco_eval-1.6.5-cp310-cp310-win_arm64.whl", hash = "sha256:d8065e6ee0c877fc22e56e44bdb4c1487a0c4221a56e3edef09533bdf525982a", size = 283019, upload-time = "2024-11-03T16:38:24.066Z" },
+    { url = "https://files.pythonhosted.org/packages/11/18/05a1dfbe2b143f7c4b996223ca5096d1087acc56b3f8e3a945a5158b0336/faster_coco_eval-1.6.7-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c0aa9a5dcf3c287ad78727fc8edfd8ac37ceb4d256efd4e4d6a4a414c2efa375", size = 376256, upload-time = "2025-06-11T00:00:05.813Z" },
+    { url = "https://files.pythonhosted.org/packages/58/2b/0765665d565347661f4656ce49dd380c127a0fc7031dee944440cc54dd9c/faster_coco_eval-1.6.7-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:8ecf930fe1a356c7a9c1248a32b3c3e342ebc3569d120cea5a7ee18378ccbab4", size = 355764, upload-time = "2025-06-11T00:00:07.814Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/a6/6bf1f7e4891c8697e1c80e2f27542c0fb7d8adea4455476559630e776ee9/faster_coco_eval-1.6.7-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:771370d2ee6c2cd095fb9c5069761fc528ac54074cdb8c617ff1a74b9a61adee", size = 465914, upload-time = "2025-06-11T00:00:08.978Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/93/85979136ecf76fdfa73724d94acf4977810c44306103e95b9b5753a35dda/faster_coco_eval-1.6.7-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6c2a64462173a9163a23e5b13891f0cfb6b617e3ee041c3a1b9698d541364377", size = 486732, upload-time = "2025-06-11T00:00:10.206Z" },
+    { url = "https://files.pythonhosted.org/packages/46/ec/b1265d8ddcaa8f4e7f52e49c6837e6c425c7c18f8732bb6de88aef111933/faster_coco_eval-1.6.7-cp310-cp310-win_amd64.whl", hash = "sha256:0ae9b6941ed064de1818bd9de8c29d29321440c33a8ae77a2d7c3c7e79218ee1", size = 334369, upload-time = "2025-06-11T00:00:11.519Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/7b/8f2961995b787d540bef5bfa6852c8af84382abe951b732974a1480a109e/faster_coco_eval-1.6.7-cp310-cp310-win_arm64.whl", hash = "sha256:9ec264dc4eacbf589a5b1425ba05fe3c9725224df194d3f89824a39ff29379f9", size = 315783, upload-time = "2025-06-11T00:00:13.229Z" },
 ]
 
 [[package]]
@@ -2419,6 +2419,7 @@ dependencies = [
     { name = "tensorflowjs" },
     { name = "tf-keras" },
     { name = "torch" },
+    { name = "torchmetrics" },
     { name = "torchvision" },
     { name = "wandb" },
     { name = "ydf" },
@@ -2429,7 +2430,7 @@ requires-dist = [
     { name = "ai-edge-litert", specifier = "==1.2.0" },
     { name = "albumentations", specifier = "==2.0.8" },
     { name = "einops", specifier = "==0.7.0" },
-    { name = "faster-coco-eval", specifier = "==1.6.5" },
+    { name = "faster-coco-eval", specifier = "==1.6.7" },
     { name = "graphviz", specifier = "==0.21" },
     { name = "hydra-core", specifier = "==1.3.2" },
     { name = "lightning", specifier = "==2.2.3" },
@@ -2456,6 +2457,7 @@ requires-dist = [
     { name = "tensorflowjs", specifier = "==4.22.0" },
     { name = "tf-keras", specifier = "==2.19.0" },
     { name = "torch", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torchmetrics", specifier = "==1.8.2" },
     { name = "torchvision", specifier = "==0.23.0", index = "https://download.pytorch.org/whl/cu128" },
     { name = "wandb", specifier = "==0.21.4" },
     { name = "ydf", specifier = "==0.13.0" },
