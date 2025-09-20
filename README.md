@@ -242,6 +242,37 @@ device=cuda \
 use_wandb=False \
 use_tensorboard=True
 
+# DDP (Distributed data parallel training), Multi-GPU training
+# Below is a sample for 8 GPUs
+# n, t, s, c, e
+VARIANT=n
+EPOCH=100
+# Number of GPUs running on one node
+NPROC=8
+# When NPROC=8, the string [0,1,2,3,4,5,6,7] is set to DEVICES.
+DEVICES="[$(seq -s, 0 $((NPROC-1)))]"
+# When there are 8 GPUs and 8 batches are assigned to each GPU
+# {Batch size per GPU} x {Number of GPUs} = {Total batch size}
+# 8 x 8 = 64
+BATCHSIZE=8
+TOTALBATCHSIZE=$((BATCHSIZE * NPROC))
+
+uv run torchrun \
+--nproc_per_node=${NPROC} \
+yolo/lazy.py \
+task=train \
+device=${DEVICES} \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${TOTALBATCHSIZE} \
+task.data.cpu_num=$((TOTALBATCHSIZE / NPROC)) \
+model=v9-${VARIANT} \
+task.resume_ckpt="runs/train/v9-n/lightning_logs/version_3/checkpoints/epoch_5_step_3660.ckpt" \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+
 ↓↓↓ Experimental implementation. Not recommended as accuracy is significantly reduced. ↓↓↓
 # Online Knowledge Distillation (Teacher E → Student {C,S,T,N})
 # Default: task.kd.enable=False

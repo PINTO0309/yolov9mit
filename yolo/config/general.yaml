@@ -1,12 +1,12 @@
 device: 0
-cpu_num: 16
+cpu_num: 16 # Number of worker threads per GPU
 
 image_size: [640, 640]
 
 out_path: runs
 exist_ok: True
 
-lucky_number: 10
+lucky_number: 10 # Deterministic Random Number Seed
 use_wandb: True
 use_tensorboard: False
 

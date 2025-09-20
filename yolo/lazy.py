@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -10,11 +11,19 @@ sys.path.append(str(project_root))
 from yolo.config.config import Config
 from yolo.tools.solver import InferenceModel, TrainModel, ValidateModel
 from yolo.tools.exporter import ONNXExporter
-from yolo.utils.logging_utils import setup
+from yolo.utils.logging_utils import set_seed, setup
+from yolo.utils.logger import logger
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
 def main(cfg: Config):
+    # Ensure reproducibility across DDP processes before any workload starts
+    seed = getattr(cfg, "lucky_number", None)
+    if seed is not None:
+        set_seed(seed)
+        if os.getenv("RANK", "0") == "0":
+            logger.info(f":seedling: Global seed set to {seed}")
+
     callbacks, loggers, save_path = setup(cfg)
 
     if cfg.task.task == "export":
