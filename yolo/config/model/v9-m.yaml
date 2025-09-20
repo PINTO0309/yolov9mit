@@ -55,7 +55,7 @@ model:
         tags: P3
 
     - AConv:
-        args: {out_channels: 184}
+        args: {out_channels: 180}
     - Concat:
         source: [-1, N4]
     - RepNCSPELAN:
