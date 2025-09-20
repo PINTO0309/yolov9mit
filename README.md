@@ -269,7 +269,6 @@ task.data.cpu_num=$((TOTALBATCHSIZE / NPROC)) \
 model=v9-${VARIANT} \
 weight=False \
 dataset=wholebody34 \
-device=cuda \
 use_wandb=False \
 use_tensorboard=True
 
