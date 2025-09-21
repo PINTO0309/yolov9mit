@@ -198,7 +198,7 @@ class BoxMatcher:
         on_anchor = (l >= 0) & (t >= 0) & (r >= 0) & (b >= 0)
 
         # All four distances must be <= (reg_max - 1 - tiny_slack)
-        # (DFLの上限に“ほんの少し”の余裕を持たせる：厳しすぎる門前払いを防ぐ)
+        # Allow a small slack at the DFL upper bound to avoid rejecting near-miss anchors
         reg_slack = float(getattr(self, "reg_slack", 0.01))
         reg_thr = float(self.reg_max) - 1.0 - reg_slack  # e.g., 16 -> 14.99
         # max over (l,t,r,b)
@@ -223,10 +223,10 @@ class BoxMatcher:
             candidates = on_anchor
         elif policy == "center":
             candidates = in_center
-        else:  # 'or' 既定
+        else:  # default to 'or'
             candidates = on_anchor | in_center
 
-        # --- final valid mask: candidate AND in_reg (DFL範囲内) ---
+        # --- final valid mask: candidate AND in_reg (within DFL range) ---
         valid = candidates & in_reg  # (B, T, A)
 
         # ensure boolean dtype
@@ -387,7 +387,7 @@ class BoxMatcher:
         iou_mat *= topk_mask
         target_matrix *= topk_mask
         metrics = (iou_mat ** self.factor["iou"]) * (cls_mat ** self.factor["cls"])
-        metrics = metrics * topk_mask  # 候補以外は0
+        metrics = metrics * topk_mask  # Zero out non-candidate anchors
         max_metrics = metrics.amax(dim=-1, keepdim=True).clamp_(min=1e-9)
         qual = (metrics / max_metrics).permute(0, 2, 1).gather(2, unique_indices)  # [B,A,1]
         align_cls = align_cls * qual * valid_mask[:, :, None]

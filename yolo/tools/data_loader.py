@@ -573,13 +573,13 @@ class YoloDataset(Dataset):
             is_eval = False
         try:
             if is_eval:
-                # 拡大禁止&動的pad禁止（mAPを安定化）
+                # Disable scale-up and dynamic padding to keep mAP stable
                 self.transform.pad_resize.set_options(auto=False, scaleup=False, pad_color=(114,114,114))
             else:
-                # 学習時は従来どおり
+                # Use the default behaviour during training
                 self.transform.pad_resize.set_options(auto=True, scaleup=True, pad_color=(114,114,114))
         except AttributeError:
-            # 古いTransformやモック時の安全策
+            # Fallback for legacy transforms or mock objects
             pass
 
     def __getitem__(self, idx) -> Tuple[Image.Image, Tensor, Tensor, List[str]]:
