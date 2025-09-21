@@ -558,10 +558,10 @@ def create_converter(
 
 
 def bbox_nms(
-    cls_dist: Tensor,              # [B, A, C] (logits または確率前)
-    bbox: Tensor,                  # [B, A, 4]  (xyxy, pixel座標)
-    nms_cfg,                       # .min_confidence, .min_iou, .max_bbox などを持つ設定
-    confidence: Tensor = None,     # [B, A] or [B, A, 1] (obj ロジット or 確率)
+    cls_dist: Tensor,              # [B, A, C] (logits or pre-probabilities)
+    bbox: Tensor,                  # [B, A, 4]  (xyxy, pixel coordinates)
+    nms_cfg,                       # configuration with min_confidence, min_iou, max_bbox, etc.
+    confidence: Tensor = None,     # [B, A] or [B, A, 1] (objectness logits or probabilities)
 ):
     B, A, C = cls_dist.shape
     device = cls_dist.device
@@ -589,18 +589,18 @@ def bbox_nms(
     class_agnostic = _cfg_value("class_agnostic", DEFAULT_CLASS_AGNOSTIC)
     size_bias_alpha = _cfg_value("size_bias_alpha", DEFAULT_SIZE_BIAS_ALPHA)
 
-    # obj（存在確率）
+    # objectness (existence probability)
     if confidence is None:
         obj = torch.ones((B, A, 1), device=device, dtype=dtype)
     else:
         obj = confidence
         if obj.ndim == 2:
             obj = obj.unsqueeze(-1)
-        # ロジットが来る場合にも対応（0..1 に正規化）
+        # convert logits to probabilities in [0, 1]
         if obj.min() < 0 or obj.max() > 1:
             obj = obj.sigmoid()
 
-    # クラス確率
+    # class probabilities
     prob = cls_dist
     if prob.min() < 0 or prob.max() > 1:
         prob = prob.sigmoid()
@@ -612,18 +612,18 @@ def bbox_nms(
         oi = obj[i]         # [A, 1]
 
         if not multi_label:
-            # ---- Single-label（安定） ----
+            # ---- Single-label (stable path) ----
             cls_p, cls_id = pi.max(dim=1, keepdim=True)               # [A,1], [A,1]
             score = (cls_p * oi).squeeze(1)                           # [A]
 
-            # サイズバイアス（任意）
+            # optional size bias
             if size_bias_alpha != 0.0:
                 w = (bi[:, 2] - bi[:, 0]).clamp_(min=0)
                 h = (bi[:, 3] - bi[:, 1]).clamp_(min=0)
                 area = (w * h).clamp_(min=1.0)
                 score = score * (area ** size_bias_alpha)
 
-            # conf しきい値
+            # confidence thresholding
             keep = score > nms_cfg.min_confidence
             if keep.sum() == 0:
                 outputs.append(bi.new_zeros((0, 6)))
@@ -631,18 +631,18 @@ def bbox_nms(
 
             bi, score, cls_id = bi[keep], score[keep], cls_id[keep].squeeze(1)
 
-            # pre-NMS 上位K（スコア順）
+            # pre-NMS top-K (sorted by score)
             if pre_topk is not None and bi.size(0) > pre_topk:
                 topk_idx = score.topk(pre_topk).indices
                 bi = bi.index_select(0, topk_idx)
                 score = score.index_select(0, topk_idx)
                 cls_id = cls_id.index_select(0, topk_idx)
 
-            # NMS（クラス別 or クラス無視）
+            # NMS (class-wise or class-agnostic)
             ids = torch.zeros_like(cls_id) if class_agnostic else cls_id
             keep_idx = batched_nms(bi, score, ids, nms_cfg.min_iou)
 
-            # スコアで再ソート → [:max_bbox]
+            # resort by score → [:max_bbox]
             keep_idx = keep_idx[: nms_cfg.max_bbox]
             si = score.index_select(0, keep_idx)
             ci = cls_id.index_select(0, keep_idx).to(torch.int64)
@@ -652,8 +652,8 @@ def bbox_nms(
             outputs.append(pred)
 
         else:
-            # ---- Multi-label（必要なときのみ）----
-            # 展開：閾値超の (anchor, class) を列挙
+            # ---- Multi-label (only when requested) ----
+            # enumerate (anchor, class) pairs above the threshold
             score_mat = pi * oi                                  # [A, C]
             ai, ci = torch.where(score_mat > nms_cfg.min_confidence)
             if ai.numel() == 0:
@@ -662,14 +662,14 @@ def bbox_nms(
 
             si = score_mat[ai, ci]                               # [N]
             b2 = bi[ai]                                          # [N, 4]
-            # サイズバイアス
+            # size bias
             if size_bias_alpha != 0.0:
                 w = (b2[:, 2] - b2[:, 0]).clamp_(min=0)
                 h = (b2[:, 3] - b2[:, 1]).clamp_(min=0)
                 area = (w * h).clamp_(min=1.0)
                 si = si * (area ** size_bias_alpha)
 
-            # pre-NMS 上位K
+            # pre-NMS top-K
             if pre_topk is not None and si.size(0) > pre_topk:
                 topk_idx = si.topk(pre_topk).indices
                 b2 = b2.index_select(0, topk_idx)
@@ -679,7 +679,7 @@ def bbox_nms(
             ids = torch.zeros_like(ci) if class_agnostic else ci
             keep_idx = batched_nms(b2, si, ids, nms_cfg.min_iou)
 
-            # スコアで再ソート → [:max_bbox]
+            # resort by score → [:max_bbox]
             keep_idx = keep_idx[: nms_cfg.max_bbox]
             out = torch.cat([ci.index_select(0, keep_idx)[:, None].to(b2.dtype),
                              b2.index_select(0, keep_idx),
