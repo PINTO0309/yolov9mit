@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torchvision.transforms import functional as TF
 import inspect
-
+import cv2
 
 class AugmentationComposer:
     """Composes several transforms together."""
@@ -55,31 +55,83 @@ class RemoveOutliers:
 
 
 class PadAndResize:
-    def __init__(self, image_size, background_color=(114, 114, 114)):
+    def __init__(self, image_size, background_color=(114, 114, 114), auto=True, scaleup=True, stride=32):
         """Initialize the object with the target image size."""
-        self.target_width, self.target_height = image_size
-        self.background_color = background_color
+        self.target_width, self.target_height = image_size  # (w, h)
+        self.pad_color = tuple(background_color)
+        self.auto = bool(auto)
+        self.scaleup = bool(scaleup)
+        self.stride = int(stride)
 
     def set_size(self, image_size: List[int]):
         self.target_width, self.target_height = image_size
 
-    def __call__(self, image: Image, boxes):
-        img_width, img_height = image.size
-        scale = min(self.target_width / img_width, self.target_height / img_height)
-        new_width, new_height = int(img_width * scale), int(img_height * scale)
+    def set_options(self, *, auto=None, scaleup=None, pad_color=None, stride=None):
+        """Option to dynamically switch behavior from the caller (DataLoader, etc.)."""
+        if auto is not None:
+            self.auto = bool(auto)
+        if scaleup is not None:
+            self.scaleup = bool(scaleup)
+        if pad_color is not None:
+            self.pad_color = tuple(pad_color)
+        if stride is not None:
+            self.stride = int(stride)
 
-        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    def __call__(self, image: Image.Image, boxes):
+        if not isinstance(image, Image.Image):
+            image = Image.fromarray(np.asarray(image))
 
-        pad_left = (self.target_width - new_width) // 2
-        pad_top = (self.target_height - new_height) // 2
-        padded_image = Image.new("RGB", (self.target_width, self.target_height), self.background_color)
+        img_w, img_h = image.size
+        target_w, target_h = self.target_width, self.target_height
+        if target_w <= 0 or target_h <= 0:
+            raise ValueError("Target image size must be positive")
+
+        gain = min(target_w / img_w, target_h / img_h) if img_w and img_h else 1.0
+        if not self.scaleup:
+            gain = min(gain, 1.0)
+
+        new_w = max(int(round(img_w * gain)), 1)
+        new_h = max(int(round(img_h * gain)), 1)
+        dw = target_w - new_w
+        dh = target_h - new_h
+
+        if self.auto:
+            dw %= self.stride
+            dh %= self.stride
+
+        dw *= 0.5
+        dh *= 0.5
+
+        pad_left = int(round(dw - 0.1))
+        pad_top = int(round(dh - 0.1))
+
+        resized_image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        padded_image = Image.new("RGB", (target_w, target_h), self.pad_color)
         padded_image.paste(resized_image, (pad_left, pad_top))
 
-        boxes[:, [1, 3]] = (boxes[:, [1, 3]] * new_width + pad_left) / self.target_width
-        boxes[:, [2, 4]] = (boxes[:, [2, 4]] * new_height + pad_top) / self.target_height
+        if boxes is None:
+            boxes_tensor = torch.zeros(0, 5, dtype=torch.float32)
+        elif isinstance(boxes, torch.Tensor):
+            boxes_tensor = boxes.clone()
+        else:
+            boxes_tensor = torch.as_tensor(boxes, dtype=torch.float32)
 
-        transform_info = torch.tensor([scale, pad_left, pad_top, pad_left, pad_top])
-        return padded_image, boxes, transform_info
+        if boxes_tensor.numel() > 0:
+            boxes_tensor[:, [1, 3]] = (boxes_tensor[:, [1, 3]] * new_w + pad_left) / target_w
+            boxes_tensor[:, [2, 4]] = (boxes_tensor[:, [2, 4]] * new_h + pad_top) / target_h
+
+        ratio_x = new_w / img_w if img_w else 1.0
+        ratio_y = new_h / img_h if img_h else 1.0
+        transform_info = {
+            "ratio": (ratio_x, ratio_y),  # scaling applied to width/height
+            "pad": (pad_left, pad_top),   # padding offset applied after resize
+            "size": (target_h, target_w),  # tensor size (h, w)
+            "auto": self.auto,
+            "scaleup": self.scaleup,
+            "stride": self.stride,
+        }
+
+        return padded_image, boxes_tensor, transform_info
 
 
 class HorizontalFlip:
