@@ -557,24 +557,136 @@ def create_converter(
     return Vec2Box(model, anchor_cfg, image_size, device)
 
 
-def bbox_nms(cls_dist: Tensor, bbox: Tensor, nms_cfg: NMSConfig, confidence: Optional[Tensor] = None):
-    cls_dist = cls_dist.sigmoid() * (1 if confidence is None else confidence)
+def bbox_nms(
+    cls_dist: Tensor,              # [B, A, C] (logits or pre-probabilities)
+    bbox: Tensor,                  # [B, A, 4]  (xyxy, pixel coordinates)
+    nms_cfg,                       # configuration with min_confidence, min_iou, max_bbox, etc.
+    confidence: Tensor = None,     # [B, A] or [B, A, 1] (objectness logits or probabilities)
+):
+    B, A, C = cls_dist.shape
+    device = cls_dist.device
+    dtype = cls_dist.dtype
 
-    batch_idx, valid_grid, valid_cls = torch.where(cls_dist > nms_cfg.min_confidence)
-    valid_con = cls_dist[batch_idx, valid_grid, valid_cls]
-    valid_box = bbox[batch_idx, valid_grid]
+    DEFAULT_PRE_TOPK = 20000
+    DEFAULT_MULTI_LABEL = False
+    DEFAULT_CLASS_AGNOSTIC = False
+    DEFAULT_SIZE_BIAS_ALPHA = 0.0
 
-    nms_idx = batched_nms(valid_box, valid_con, batch_idx + valid_cls * bbox.size(0), nms_cfg.min_iou)
-    predicts_nms = []
-    for idx in range(cls_dist.size(0)):
-        instance_idx = nms_idx[idx == batch_idx[nms_idx]]
+    def _cfg_value(name: str, default):
+        if nms_cfg is None:
+            return default
+        if hasattr(nms_cfg, name):
+            return getattr(nms_cfg, name)
+        if isinstance(nms_cfg, dict):
+            return nms_cfg.get(name, default)
+        try:
+            return nms_cfg[name]
+        except (TypeError, KeyError, IndexError):
+            return default
 
-        predict_nms = torch.cat(
-            [valid_cls[instance_idx][:, None], valid_box[instance_idx], valid_con[instance_idx][:, None]], dim=-1
-        )
+    pre_topk = _cfg_value("pre_topk", DEFAULT_PRE_TOPK)
+    multi_label = _cfg_value("multi_label", DEFAULT_MULTI_LABEL)
+    class_agnostic = _cfg_value("class_agnostic", DEFAULT_CLASS_AGNOSTIC)
+    size_bias_alpha = _cfg_value("size_bias_alpha", DEFAULT_SIZE_BIAS_ALPHA)
 
-        predicts_nms.append(predict_nms[: nms_cfg.max_bbox])
-    return predicts_nms
+    # objectness (existence probability)
+    if confidence is None:
+        obj = torch.ones((B, A, 1), device=device, dtype=dtype)
+    else:
+        obj = confidence
+        if obj.ndim == 2:
+            obj = obj.unsqueeze(-1)
+        # convert logits to probabilities in [0, 1]
+        if obj.min() < 0 or obj.max() > 1:
+            obj = obj.sigmoid()
+
+    # class probabilities
+    prob = cls_dist
+    if prob.min() < 0 or prob.max() > 1:
+        prob = prob.sigmoid()
+
+    outputs = []
+    for i in range(B):
+        pi = prob[i]        # [A, C]
+        bi = bbox[i]        # [A, 4]
+        oi = obj[i]         # [A, 1]
+
+        if not multi_label:
+            # ---- Single-label (stable path) ----
+            cls_p, cls_id = pi.max(dim=1, keepdim=True)               # [A,1], [A,1]
+            score = (cls_p * oi).squeeze(1)                           # [A]
+
+            # optional size bias
+            if size_bias_alpha != 0.0:
+                w = (bi[:, 2] - bi[:, 0]).clamp_(min=0)
+                h = (bi[:, 3] - bi[:, 1]).clamp_(min=0)
+                area = (w * h).clamp_(min=1.0)
+                score = score * (area ** size_bias_alpha)
+
+            # confidence thresholding
+            keep = score > nms_cfg.min_confidence
+            if keep.sum() == 0:
+                outputs.append(bi.new_zeros((0, 6)))
+                continue
+
+            bi, score, cls_id = bi[keep], score[keep], cls_id[keep].squeeze(1)
+
+            # pre-NMS top-K (sorted by score)
+            if pre_topk is not None and bi.size(0) > pre_topk:
+                topk_idx = score.topk(pre_topk).indices
+                bi = bi.index_select(0, topk_idx)
+                score = score.index_select(0, topk_idx)
+                cls_id = cls_id.index_select(0, topk_idx)
+
+            # NMS (class-wise or class-agnostic)
+            ids = torch.zeros_like(cls_id) if class_agnostic else cls_id
+            keep_idx = batched_nms(bi, score, ids, nms_cfg.min_iou)
+
+            # resort by score → [:max_bbox]
+            keep_idx = keep_idx[: nms_cfg.max_bbox]
+            si = score.index_select(0, keep_idx)
+            ci = cls_id.index_select(0, keep_idx).to(torch.int64)
+            bi = bi.index_select(0, keep_idx)
+
+            pred = torch.cat([ci[:, None].to(bi.dtype), bi, si[:, None]], dim=1)  # [N, 6]
+            outputs.append(pred)
+
+        else:
+            # ---- Multi-label (only when requested) ----
+            # enumerate (anchor, class) pairs above the threshold
+            score_mat = pi * oi                                  # [A, C]
+            ai, ci = torch.where(score_mat > nms_cfg.min_confidence)
+            if ai.numel() == 0:
+                outputs.append(bi.new_zeros((0, 6)))
+                continue
+
+            si = score_mat[ai, ci]                               # [N]
+            b2 = bi[ai]                                          # [N, 4]
+            # size bias
+            if size_bias_alpha != 0.0:
+                w = (b2[:, 2] - b2[:, 0]).clamp_(min=0)
+                h = (b2[:, 3] - b2[:, 1]).clamp_(min=0)
+                area = (w * h).clamp_(min=1.0)
+                si = si * (area ** size_bias_alpha)
+
+            # pre-NMS top-K
+            if pre_topk is not None and si.size(0) > pre_topk:
+                topk_idx = si.topk(pre_topk).indices
+                b2 = b2.index_select(0, topk_idx)
+                si = si.index_select(0, topk_idx)
+                ci = ci.index_select(0, topk_idx)
+
+            ids = torch.zeros_like(ci) if class_agnostic else ci
+            keep_idx = batched_nms(b2, si, ids, nms_cfg.min_iou)
+
+            # resort by score → [:max_bbox]
+            keep_idx = keep_idx[: nms_cfg.max_bbox]
+            out = torch.cat([ci.index_select(0, keep_idx)[:, None].to(b2.dtype),
+                             b2.index_select(0, keep_idx),
+                             si.index_select(0, keep_idx)[:, None]], dim=1)
+            outputs.append(out)
+
+    return outputs
 
 
 def calculate_map(predictions, ground_truths) -> Dict[str, Tensor]:
