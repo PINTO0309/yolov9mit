@@ -149,28 +149,88 @@ class BoxMatcher:
         for attr_name in cfg:
             setattr(self, attr_name, cfg[attr_name])
 
-    def get_valid_matrix(self, target_bbox: Tensor):
+    def get_valid_matrix(self, target_bbox: torch.Tensor) -> torch.Tensor:
         """
-        Get a boolean mask that indicates whether each target bounding box overlaps with each anchor
-        and is able to correctly predict it with the available reg_max value.
+        Return a boolean mask [B, T, A] telling whether each GT (T) can be validly predicted
+        by each anchor (A), considering:
+        1) anchor center inside GT box (in-box),
+        2) anchor center inside a center region around GT center (center prior),
+        3) all four distances (l,t,r,b) to GT edges are within DFL range (reg_max).
 
         Args:
-            target_bbox [batch x targets x 4]: The bounding box of each target.
+            target_bbox: [B, T, 4] in xyxy (image pixel coordinates).
+
         Returns:
-            [batch x targets x anchors]: A boolean tensor indicates if target bounding box overlaps
-            with the anchors, and the anchor is able to predict the target.
+            valid: [B, T, A] boolean
         """
-        x_min, y_min, x_max, y_max = target_bbox[:, :, None].unbind(3)
-        anchors = self.vec2box.anchor_grid[None, None]  # add a axis at first, second dimension
-        anchors_x, anchors_y = anchors.unbind(dim=3)
-        x_min_dist, x_max_dist = anchors_x - x_min, x_max - anchors_x
-        y_min_dist, y_max_dist = anchors_y - y_min, y_max - anchors_y
-        targets_dist = torch.stack((x_min_dist, y_min_dist, x_max_dist, y_max_dist), dim=-1)
-        targets_dist /= self.vec2box.scaler[None, None, :, None]  # (1, 1, anchors, 1)
-        min_reg_dist, max_reg_dist = targets_dist.amin(dim=-1), targets_dist.amax(dim=-1)
-        target_on_anchor = min_reg_dist >= 0
-        target_in_reg_max = max_reg_dist <= self.reg_max - 1.01
-        return target_on_anchor & target_in_reg_max
+        device = target_bbox.device
+        dtype = target_bbox.dtype
+        B, T = target_bbox.shape[:2]
+        if T == 0:
+            # no targets
+            A = self.vec2box.anchor_grid.shape[0]
+            return torch.zeros((B, 0, A), dtype=torch.bool, device=device)
+
+        # --- anchors & stride ---
+        # anchor_grid: (A, 2) -> (1,1,A,2)
+        anchors = self.vec2box.anchor_grid.to(device).view(1, 1, -1, 2)
+        ax = anchors[..., 0]  # (B=1, T=1, A)
+        ay = anchors[..., 1]
+
+        # stride per anchor: (A,) -> (1,1,A)
+        stride = self.vec2box.scaler.to(device).view(1, 1, -1)
+
+        # --- GT boxes expanded ---
+        # target_bbox: [B,T,4] -> [B,T,1,4]
+        tb = target_bbox.unsqueeze(2)  # (B, T, 1, 4)
+        x_min, y_min, x_max, y_max = tb.unbind(dim=-1)  # each (B, T, 1)
+
+        # --- DFL range check (reg_max) ---
+        # Distances (in pixels) from anchor center to each GT edge, then normalize by stride.
+        # l = (ax - x_min)/s, t = (ay - y_min)/s, r = (x_max - ax)/s, b = (y_max - ay)/s
+        # NOTE: broadcasting: ax, ay are (1,1,A) and x_min,... are (B,T,1)
+        l = (ax - x_min) / stride
+        t = (ay - y_min) / stride
+        r = (x_max - ax) / stride
+        b = (y_max - ay) / stride
+
+        # anchor center inside GT box
+        on_anchor = (l >= 0) & (t >= 0) & (r >= 0) & (b >= 0)
+
+        # All four distances must be <= (reg_max - 1 - tiny_slack)
+        # (DFLの上限に“ほんの少し”の余裕を持たせる：厳しすぎる門前払いを防ぐ)
+        reg_slack = float(getattr(self, "reg_slack", 0.01))
+        reg_thr = float(self.reg_max) - 1.0 - reg_slack  # e.g., 16 -> 14.99
+        # max over (l,t,r,b)
+        max_reg = torch.stack((l, t, r, b), dim=-1).amax(dim=-1)
+        in_reg = max_reg <= reg_thr  # (B, T, A)
+
+        # --- center prior (stride-based rectangle around GT center) ---
+        # Typical TAL uses a radius in *stride* units per level.
+        center_radius = float(getattr(self, "center_radius", 2.5))
+        rad = center_radius * stride  # (B=1, T=1, A)
+
+        cx = (x_min + x_max) * 0.5  # (B, T, 1)
+        cy = (y_min + y_max) * 0.5
+        in_center = (ax >= (cx - rad)) & (ax <= (cx + rad)) & \
+                    (ay >= (cy - rad)) & (ay <= (cy + rad))  # (B, T, A)
+
+        # --- candidate policy: how to combine in-box and center prior ---
+        policy = getattr(self, "candidate_policy", "or").lower()
+        if policy == "and":
+            candidates = on_anchor & in_center
+        elif policy == "box":
+            candidates = on_anchor
+        elif policy == "center":
+            candidates = in_center
+        else:  # 'or' 既定
+            candidates = on_anchor | in_center
+
+        # --- final valid mask: candidate AND in_reg (DFL範囲内) ---
+        valid = candidates & in_reg  # (B, T, A)
+
+        # ensure boolean dtype
+        return valid.bool()
 
     def get_cls_matrix(self, predict_cls: Tensor, target_cls: Tensor) -> Tensor:
         """
@@ -198,7 +258,7 @@ class BoxMatcher:
         Returns:
             [batch x targets x predicts]: The IoU scores between each target and predicted.
         """
-        return calculate_iou(target_bbox, predict_bbox, self.iou).clamp(0, 1)
+        return calculate_iou(target_bbox, predict_bbox, metrics="iou").clamp(0, 1)
 
     def filter_topk(self, target_matrix: Tensor, grid_mask: Tensor, topk: int = 10) -> Tuple[Tensor, Tensor]:
         """
@@ -316,8 +376,7 @@ class BoxMatcher:
         topk_mask = self.ensure_one_anchor(target_matrix, topk_mask)
 
         # delete one anchor pred assign to mutliple gts
-        #unique_indices, valid_mask, topk_mask = self.filter_duplicates(iou_mat, topk_mask)
-        unique_indices, valid_mask, topk_mask = self.filter_duplicates(grid_mask * iou_mat, topk_mask)
+        unique_indices, valid_mask, topk_mask = self.filter_duplicates(iou_mat, topk_mask)
 
         align_bbox = torch.gather(target_bbox, 1, unique_indices.repeat(1, 1, 4))
         align_cls_indices = torch.gather(target_cls, 1, unique_indices)
@@ -327,11 +386,11 @@ class BoxMatcher:
         # normalize class ditribution
         iou_mat *= topk_mask
         target_matrix *= topk_mask
-        max_target = target_matrix.amax(dim=-1, keepdim=True)
-        max_iou = iou_mat.amax(dim=-1, keepdim=True)
-        normalize_term = (target_matrix / (max_target + 1e-9)) * max_iou
-        normalize_term = normalize_term.permute(0, 2, 1).gather(2, unique_indices)
-        align_cls = align_cls * normalize_term * valid_mask[:, :, None]
+        metrics = (iou_mat ** self.factor["iou"]) * (cls_mat ** self.factor["cls"])
+        metrics = metrics * topk_mask  # 候補以外は0
+        max_metrics = metrics.amax(dim=-1, keepdim=True).clamp_(min=1e-9)
+        qual = (metrics / max_metrics).permute(0, 2, 1).gather(2, unique_indices)  # [B,A,1]
+        align_cls = align_cls * qual * valid_mask[:, :, None]
         anchor_matched_targets = torch.cat([align_cls, align_bbox], dim=-1)
         return anchor_matched_targets, valid_mask
 

@@ -45,6 +45,7 @@ class ValidateModel(BaseModel):
         self.metric.warn_on_many_detections = False
         self.val_loader = create_dataloader(self.validation_cfg.data, self.cfg.dataset, self.validation_cfg.task)
         self.ema = self.model
+        self._warn_missing_val_loss = False
 
     def setup(self, stage):
         self.vec2box = create_converter(
@@ -70,7 +71,8 @@ class ValidateModel(BaseModel):
         batch_size, images, targets, rev_tensor, img_paths = batch
         H, W = images.shape[2:]
         ema_outputs = self.ema(images)
-        if self.loss_fn is not None:
+        calc_val_loss = bool(getattr(self.validation_cfg, "calc_epoch_total_val_loss", False))
+        if calc_val_loss and self.loss_fn is not None:
             self.vec2box.update([W, H])
             aux_predicts = self.vec2box(ema_outputs["AUX"])
             main_predicts = self.vec2box(ema_outputs["Main"])
@@ -85,6 +87,9 @@ class ValidateModel(BaseModel):
                 logger=False,
                 batch_size=batch_size,
             )
+        elif calc_val_loss and self.loss_fn is None and not self._warn_missing_val_loss:
+            self._warn_missing_val_loss = True
+            logger.warning(":warning: Validation loss logging requested but loss function is unavailable.")
         predicts = self.post_process(ema_outputs, image_size=[W, H])
         pred_list = [to_metrics_format(predict) for predict in predicts]
         tgt_list = [to_metrics_format(target) for target in targets]

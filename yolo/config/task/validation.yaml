@@ -16,4 +16,9 @@ nms:
 # Whether to print per-class mAP on validation end
 print_map_per_class: False
 
-skip_metric_when_empty: true
+skip_metric_when_empty: True
+
+# Enable or disable the calculation of Loss/val_total
+# Calculating Loss/val_total consumes a large amount of VRAM,
+# so disabling logging can reduce VRAM consumption.
+calc_epoch_total_val_loss: True
