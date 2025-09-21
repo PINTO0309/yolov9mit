@@ -9,7 +9,7 @@ data:
   data_augment: {}
   dynamic_shape: False
 nms:
-  min_confidence: 0.001 # 0.0001
+  min_confidence: 0.0001 # 0.0001
   min_iou: 0.7
   pre_topk: 20000 # pre-nms bboxes, Limit to top K pre-NMS per image (disable with None), (Default)None
   max_bbox: 20000 # post-nms bboxes, (Default)1000
