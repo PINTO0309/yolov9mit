@@ -11,7 +11,15 @@ data:
 nms:
   min_confidence: 0.001 # 0.0001
   min_iou: 0.7
-  max_bbox: 1000
+  pre_topk: 20000 # pre-nms bboxes, Limit to top K pre-NMS per image (disable with None), (Default)None
+  max_bbox: 20000 # post-nms bboxes, (Default)1000
+  # multi_label=True: Expand all classes exceeding the threshold for a single anchor to "candidates"
+  # multi_label=False: Select only the top-ranked class per anchor as a candidate (= single-label)
+  # class_agnostic=True: NMS ignores classes and suppresses duplicates (rejects different classes even if they are in the same location)
+  # class_agnostic=False: NMS runs by class (different classes are not suppressed)
+  multi_label: True # True: multi-label expansion, (Default)False : Top-1 only
+  class_agnostic: True # True: Class-ignoring NMS, (Default)False: Class-specific NMS
+  size_bias_alpha: 0.0 # >0 to slightly increase large (e.g. 0.05)
 
 # Whether to print per-class mAP on validation end
 print_map_per_class: False
@@ -21,4 +29,4 @@ skip_metric_when_empty: True
 # Enable or disable the calculation of Loss/val_total
 # Calculating Loss/val_total consumes a large amount of VRAM,
 # so disabling logging can reduce VRAM consumption.
-calc_epoch_total_val_loss: True
+calc_epoch_total_val_loss: False

@@ -136,6 +136,10 @@ class NMSConfig:
     min_confidence: float
     min_iou: float
     max_bbox: int
+    pre_topk: Optional[int] = 20000
+    multi_label: bool = False
+    class_agnostic: bool = False
+    size_bias_alpha: float = 0.0
 
 
 @dataclass

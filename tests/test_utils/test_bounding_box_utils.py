@@ -182,7 +182,12 @@ def test_bbox_nms():
         dtype=float32,
     )
 
-    nms_cfg = NMSConfig(min_confidence=0.5, min_iou=0.5, max_bbox=400)
+    nms_cfg = NMSConfig(
+        min_confidence=0.5,
+        min_iou=0.5,
+        max_bbox=400,
+        multi_label=True,
+    )
 
     # Batch 1:
     #  - box 1 is kept with classes 0 and 2 as it overlaps with box 4 and has a higher confidence for classes 0 and 2.

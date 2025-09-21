@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
 from math import ceil
 from pathlib import Path
 
@@ -408,11 +410,57 @@ class TrainModel(ValidateModel):
         super().__init__(cfg)
         self.cfg = cfg
         self.train_loader = create_dataloader(self.cfg.task.data, self.cfg.dataset, self.cfg.task.task)
+        self._nms_logged = False
 
     def setup(self, stage):
         super().setup(stage)
         if self.loss_fn is None:
             self.loss_fn = create_loss_function(self.cfg, self.vec2box)
+        if not self._nms_logged and (stage is None or stage == "fit"):
+            nms_cfg = getattr(self.validation_cfg, "nms", None)
+            if nms_cfg is not None:
+                nms_dict = None
+                if is_dataclass(nms_cfg):
+                    nms_dict = asdict(nms_cfg)
+                elif isinstance(nms_cfg, Mapping):
+                    nms_dict = dict(nms_cfg)
+                else:
+                    known_fields = (
+                        "min_confidence",
+                        "min_iou",
+                        "pre_topk",
+                        "max_bbox",
+                        "multi_label",
+                        "class_agnostic",
+                        "size_bias_alpha",
+                    )
+                    extracted = {key: getattr(nms_cfg, key) for key in known_fields if hasattr(nms_cfg, key)}
+                    if extracted:
+                        nms_dict = extracted
+
+                if nms_dict is not None:
+                    ordered_keys = [
+                        "min_confidence",
+                        "min_iou",
+                        "pre_topk",
+                        "max_bbox",
+                        "multi_label",
+                        "class_agnostic",
+                        "size_bias_alpha",
+                    ]
+                    summary = []
+                    for key in ordered_keys:
+                        if key in nms_dict:
+                            summary.append(f"{key}={nms_dict[key]}")
+                    for key, value in nms_dict.items():
+                        if key not in ordered_keys:
+                            summary.append(f"{key}={value}")
+                    nms_repr = ", ".join(summary) if summary else str(nms_dict)
+                else:
+                    nms_repr = str(nms_cfg)
+
+                logger.info(f":information_source: Validation NMS config: {nms_repr}")
+                self._nms_logged = True
         # Optional: load teacher for online KD
         self.kd_cfg = getattr(self.cfg.task, "kd", None)
         self.teacher = None
