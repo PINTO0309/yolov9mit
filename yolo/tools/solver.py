@@ -82,6 +82,7 @@ class ValidateModel(BaseModel):
                 on_step=False,
                 on_epoch=True,
                 sync_dist=True,
+                logger=False,
                 batch_size=batch_size,
             )
         predicts = self.post_process(ema_outputs, image_size=[W, H])
@@ -180,6 +181,20 @@ class ValidateModel(BaseModel):
                         except Exception:
                             continue
                         exp.add_scalar(k, scalar, global_step=step)
+        # Log validation loss to TensorBoard using aggregated epoch metric
+        callback_metrics = getattr(self.trainer, "callback_metrics", {}) or {}
+        val_total_metric = callback_metrics.get("Loss/val_total")
+        if val_total_metric is not None:
+            try:
+                val_scalar = float(val_total_metric)
+            except Exception:
+                val_scalar = None
+            if val_scalar is not None:
+                step = int(self.current_epoch)
+                for lg in self.trainer.loggers:
+                    if isinstance(lg, TensorBoardLogger):
+                        exp = lg.experiment
+                        exp.add_scalar("Loss/val_total", val_scalar, global_step=step)
         self.metric.reset()
 
     @torch.no_grad()
@@ -197,7 +212,6 @@ class ValidateModel(BaseModel):
             H, W = images.shape[2:]
             # Move to the same device as the model for a valid forward
             images = images.to(device)
-            rev_tensor = rev_tensor.to(device)
             predicts = self.post_process(model_to_use(images), image_size=[W, H])
             # Ensure both predictions and targets are on the same device (CPU) for TorchMetrics COCO backend
             pred_list = [to_metrics_format(p.detach().cpu()) for p in predicts]

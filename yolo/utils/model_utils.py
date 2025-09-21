@@ -3,7 +3,7 @@ from copy import deepcopy
 from math import exp
 from pathlib import Path
 from collections import OrderedDict
-from typing import List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import torch
 import torch.distributed as dist
@@ -316,7 +316,8 @@ class PostProcess:
         self.nms = nms_cfg
 
     def __call__(
-        self, predict, rev_tensor: Optional[Tensor] = None, image_size: Optional[List[int]] = None
+        self, predict, rev_tensor: Optional[Union[Tensor, Dict[str, Tensor], Sequence[Dict[str, Any]]]] = None,
+        image_size: Optional[List[int]] = None,
     ) -> List[Tensor]:
         if image_size is not None:
             self.converter.update(image_size)
@@ -324,9 +325,54 @@ class PostProcess:
         pred_class, _, pred_bbox = prediction[:3]
         pred_conf = prediction[3] if len(prediction) == 4 else None
         if rev_tensor is not None:
-            pred_bbox = (pred_bbox - rev_tensor[:, None, 1:]) / rev_tensor[:, 0:1, None]
+            gains, shifts = self._parse_letterbox_meta(rev_tensor, pred_bbox.device, pred_bbox.dtype)
+            if gains is not None and shifts is not None and gains.numel() and shifts.numel():
+                gains = gains.clamp_min(1e-6)
+                pred_bbox = (pred_bbox - shifts[:, None, :]) / gains[:, None, :]
         pred_bbox = bbox_nms(pred_class, pred_bbox, self.nms, pred_conf)
         return pred_bbox
+
+    @staticmethod
+    def _to_tensor(value, device, dtype) -> Tensor:
+        if isinstance(value, torch.Tensor):
+            return value.to(device=device, dtype=dtype)
+        return torch.tensor(value, device=device, dtype=dtype)
+
+    def _parse_letterbox_meta(
+        self,
+        meta: Union[Tensor, Dict[str, Any], Sequence[Dict[str, Any]]],
+        device,
+        dtype,
+    ) -> Tuple[Optional[Tensor], Optional[Tensor]]:
+        if isinstance(meta, torch.Tensor):
+            gains = meta[:, :1].repeat(1, 4).to(device=device, dtype=dtype)
+            shifts = meta[:, 1:].to(device=device, dtype=dtype)
+            return gains, shifts
+
+        if isinstance(meta, dict):
+            ratio = meta.get("ratio", (1.0, 1.0))
+            pad = meta.get("pad", (0.0, 0.0))
+            ratio_t = self._to_tensor(ratio, device, dtype)
+            pad_t = self._to_tensor(pad, device, dtype)
+            if ratio_t.ndim == 1:
+                ratio_t = ratio_t.unsqueeze(0)
+            if pad_t.ndim == 1:
+                pad_t = pad_t.unsqueeze(0)
+            gains = torch.stack([ratio_t[:, 0], ratio_t[:, 1], ratio_t[:, 0], ratio_t[:, 1]], dim=-1)
+            shifts = torch.stack([pad_t[:, 0], pad_t[:, 1], pad_t[:, 0], pad_t[:, 1]], dim=-1)
+            return gains, shifts
+
+        if isinstance(meta, (list, tuple)):
+            if not meta:
+                empty = torch.zeros((0, 4), device=device, dtype=dtype)
+                return empty, empty
+            ratio = torch.tensor([item.get("ratio", (1.0, 1.0)) for item in meta], device=device, dtype=dtype)
+            pad = torch.tensor([item.get("pad", (0.0, 0.0)) for item in meta], device=device, dtype=dtype)
+            gains = torch.stack([ratio[:, 0], ratio[:, 1], ratio[:, 0], ratio[:, 1]], dim=-1)
+            shifts = torch.stack([pad[:, 0], pad[:, 1], pad[:, 0], pad[:, 1]], dim=-1)
+            return gains, shifts
+
+        raise TypeError(f"Unsupported letterbox metadata type: {type(meta)!r}")
 
 
 def collect_prediction(predict_json: List, local_rank: int) -> List:
@@ -350,17 +396,78 @@ def collect_prediction(predict_json: List, local_rank: int) -> List:
 
 
 def predicts_to_json(img_paths, predicts, rev_tensor):
-    """
-    TODO: function document
-    turn a batch of imagepath and predicts(n x 6 for each image) to a List of diction(Detection output)
-    """
+    """Convert predictions back to COCO json format using letterbox metadata."""
+
+    def _expand_letterbox(meta, count):
+        if meta is None:
+            return [{"ratio": (1.0, 1.0), "pad": (0.0, 0.0)} for _ in range(count)]
+
+        if isinstance(meta, dict):
+            def _to_tensor(val, dtype=torch.float32):
+                if val is None:
+                    return None
+                if isinstance(val, torch.Tensor):
+                    tensor = val.detach().cpu().to(dtype=dtype)
+                else:
+                    tensor = torch.tensor(val, dtype=dtype)
+                if tensor.ndim == 1:
+                    tensor = tensor.unsqueeze(0)
+                return tensor
+
+            ratio_t = _to_tensor(meta.get("ratio"))
+            pad_t = _to_tensor(meta.get("pad"))
+            size_t = _to_tensor(meta.get("size"))
+            num = 0
+            for tensor in (ratio_t, pad_t, size_t):
+                if tensor is not None:
+                    num = max(num, tensor.size(0))
+            num = max(num, 1)
+            entries = []
+            for idx in range(num):
+                entry = {
+                    "ratio": tuple(ratio_t[idx].tolist()) if ratio_t is not None else (1.0, 1.0),
+                    "pad": tuple(pad_t[idx].tolist()) if pad_t is not None else (0.0, 0.0),
+                }
+                if size_t is not None:
+                    entry["size"] = tuple(size_t[idx].tolist())
+                entries.append(entry)
+            if len(entries) < count:
+                entries.extend(entries[-1] for _ in range(count - len(entries)))
+            return entries[:count]
+
+        if isinstance(meta, torch.Tensor):
+            scales = meta[:, 0].detach().cpu()
+            pads = meta[:, 1:].detach().cpu().view(meta.size(0), 4)
+            return [
+                {
+                    "ratio": (float(scale), float(scale)),
+                    "pad": (float(pad[0]), float(pad[1])),
+                }
+                for scale, pad in zip(scales, pads)
+            ]
+
+        if isinstance(meta, (list, tuple)):
+            return list(meta)
+
+        raise TypeError(f"Unsupported letterbox metadata type: {type(meta)!r}")
+
+    rev_list = _expand_letterbox(rev_tensor, len(predicts))
     batch_json = []
-    for img_path, bboxes, box_reverse in zip(img_paths, predicts, rev_tensor):
-        scale, shift = box_reverse.split([1, 4])
-        bboxes = bboxes.clone()
-        bboxes[:, 1:5] = (bboxes[:, 1:5] - shift[None]) / scale[None]
-        bboxes[:, 1:5] = transform_bbox(bboxes[:, 1:5], "xyxy -> xywh")
-        for cls, *pos, conf in bboxes:
+    for img_path, bboxes, info in zip(img_paths, predicts, rev_list):
+        if isinstance(bboxes, torch.Tensor):
+            boxes_tensor = bboxes.detach().cpu().clone()
+        else:
+            boxes_tensor = torch.as_tensor(bboxes, dtype=torch.float32)
+
+        ratio = torch.tensor(info.get("ratio", (1.0, 1.0)), dtype=boxes_tensor.dtype)
+        pad = torch.tensor(info.get("pad", (0.0, 0.0)), dtype=boxes_tensor.dtype)
+        ratio = ratio.clamp_min(1e-6)
+
+        boxes_tensor[:, [1, 3]] = (boxes_tensor[:, [1, 3]] - pad[0]) / ratio[0]
+        boxes_tensor[:, [2, 4]] = (boxes_tensor[:, [2, 4]] - pad[1]) / ratio[1]
+        boxes_tensor[:, 1:5] = transform_bbox(boxes_tensor[:, 1:5], "xyxy -> xywh")
+
+        for cls, *pos, conf in boxes_tensor:
             bbox = {
                 "image_id": int(Path(img_path).stem),
                 "category_id": IDX_TO_ID[int(cls)],

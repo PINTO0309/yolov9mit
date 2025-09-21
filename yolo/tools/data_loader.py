@@ -3,7 +3,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from statistics import mean
 from threading import Event, Thread
-from typing import Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
@@ -30,6 +30,35 @@ from yolo.utils.dataset_utils import (
 from yolo.utils.logger import logger
 
 
+def _stack_letterbox_info(items: Sequence[Mapping[str, Any]]) -> Dict[str, torch.Tensor]:
+    """Stack per-sample letterbox metadata into batched tensors."""
+    if not items:
+        return {
+            "ratio": torch.zeros((0, 2), dtype=torch.float32),
+            "pad": torch.zeros((0, 2), dtype=torch.float32),
+            "size": torch.zeros((0, 2), dtype=torch.float32),
+            "auto": torch.zeros(0, dtype=torch.bool),
+            "scaleup": torch.zeros(0, dtype=torch.bool),
+            "stride": torch.zeros(0, dtype=torch.int32),
+        }
+
+    ratio = torch.tensor([item.get("ratio", (1.0, 1.0)) for item in items], dtype=torch.float32)
+    pad = torch.tensor([item.get("pad", (0.0, 0.0)) for item in items], dtype=torch.float32)
+    size = torch.tensor([item.get("size", (0.0, 0.0)) for item in items], dtype=torch.float32)
+    auto = torch.tensor([bool(item.get("auto", True)) for item in items], dtype=torch.bool)
+    scaleup = torch.tensor([bool(item.get("scaleup", True)) for item in items], dtype=torch.bool)
+    stride = torch.tensor([int(item.get("stride", 32)) for item in items], dtype=torch.int32)
+
+    return {
+        "ratio": ratio,
+        "pad": pad,
+        "size": size,
+        "auto": auto,
+        "scaleup": scaleup,
+        "stride": stride,
+    }
+
+
 class YoloDataset(Dataset):
     def __init__(self, data_cfg: DataConfig, dataset_cfg: DatasetConfig, phase: str = "train2017"):
         augment_cfg = data_cfg.data_augment
@@ -38,6 +67,7 @@ class YoloDataset(Dataset):
         self.batch_size = data_cfg.batch_size
         self.dynamic_shape = getattr(data_cfg, "dynamic_shape", False)
         self.base_size = mean(self.image_size)
+        self.phase = str(phase)
 
         transforms = []
         for aug, params in augment_cfg.items():
@@ -534,6 +564,24 @@ class YoloDataset(Dataset):
         self.image_size = [int(self.base_size + shift), int(self.base_size - shift)]
         self.transform.pad_resize.set_size(self.image_size)
 
+        split = str(getattr(self, "phase", "train")).lower()
+        if split.startswith("train"):
+            is_eval = False
+        elif split.startswith(("val", "valid", "validation", "test", "eval")):
+            is_eval = True
+        else:
+            is_eval = False
+        try:
+            if is_eval:
+                # 拡大禁止&動的pad禁止（mAPを安定化）
+                self.transform.pad_resize.set_options(auto=False, scaleup=False, pad_color=(114,114,114))
+            else:
+                # 学習時は従来どおり
+                self.transform.pad_resize.set_options(auto=True, scaleup=True, pad_color=(114,114,114))
+        except AttributeError:
+            # 古いTransformやモック時の安全策
+            pass
+
     def __getitem__(self, idx) -> Tuple[Image.Image, Tensor, Tensor, List[str]]:
         img, bboxes, img_path = self.get_data(idx)
 
@@ -645,7 +693,7 @@ class ClassBiasedBatchSampler(BatchSampler):
         return None
 
 
-def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[Tensor, List[Tensor]]:
+def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[int, Tensor, Tensor, Dict[str, torch.Tensor], Tuple[str, ...]]:
     """
     A collate function to handle batching of images and their corresponding targets.
 
@@ -655,9 +703,12 @@ def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[Tensor, List[Tensor]
             - labels (Tensor): The tensor of labels for the image.
 
     Returns:
-        Tuple[Tensor, List[Tensor]]: A tuple containing:
+        Tuple[int, Tensor, Tensor, Dict[str, torch.Tensor], Tuple[str, ...]]: A tuple containing:
+            - Batch size.
             - A tensor of batched images.
-            - A list of tensors, each corresponding to bboxes for each image in the batch.
+            - A tensor of padded targets (shape [B, max_boxes, 5]).
+            - A dictionary with stacked letterbox metadata (ratio, pad, size, etc.).
+            - A tuple of file paths for each image in the batch.
     """
     batch_size = len(batch)
     target_sizes = [item[1].size(0) for item in batch]
@@ -668,9 +719,9 @@ def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[Tensor, List[Tensor]
     for idx, target_size in enumerate(target_sizes):
         batch_targets[idx, : min(target_size, 100)] = batch[idx][1][:100]
 
-    batch_images, _, batch_reverse, batch_path = zip(*batch)
+    batch_images, _, batch_reverse_list, batch_path = zip(*batch)
     batch_images = torch.stack(batch_images)
-    batch_reverse = torch.stack(batch_reverse)
+    batch_reverse = _stack_letterbox_info(batch_reverse_list)
 
     return batch_size, batch_images, batch_targets, batch_reverse, batch_path
 
@@ -791,9 +842,9 @@ class StreamDataLoader:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = Image.fromarray(frame)
         origin_frame = frame
-        frame, _, rev_tensor = self.transform(frame, torch.zeros(0, 5))
+        frame, _, rev_info = self.transform(frame, torch.zeros(0, 5))
         frame = frame[None]
-        rev_tensor = rev_tensor[None]
+        rev_tensor = _stack_letterbox_info([rev_info])
         meta = {
             "source_path": str(source_path) if source_path is not None else None,
             "frame_index": self._frame_index,

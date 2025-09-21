@@ -316,7 +316,8 @@ class BoxMatcher:
         topk_mask = self.ensure_one_anchor(target_matrix, topk_mask)
 
         # delete one anchor pred assign to mutliple gts
-        unique_indices, valid_mask, topk_mask = self.filter_duplicates(iou_mat, topk_mask)
+        #unique_indices, valid_mask, topk_mask = self.filter_duplicates(iou_mat, topk_mask)
+        unique_indices, valid_mask, topk_mask = self.filter_duplicates(grid_mask * iou_mat, topk_mask)
 
         align_bbox = torch.gather(target_bbox, 1, unique_indices.repeat(1, 1, 4))
         align_cls_indices = torch.gather(target_cls, 1, unique_indices)

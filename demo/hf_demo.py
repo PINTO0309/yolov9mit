@@ -42,10 +42,17 @@ def predict(model_name, image, nms_confidence, nms_iou, max_bbox):
         model, converter = load_model(model_name)
         DEFAULT_MODEL = model_name
 
-    image_tensor, _, rev_tensor = transform(image)
+    image_tensor, _, rev_info = transform(image)
 
     image_tensor = image_tensor.to(device)[None]
-    rev_tensor = rev_tensor.to(device)[None]
+    rev_tensor = {
+        "ratio": torch.tensor([rev_info.get("ratio", (1.0, 1.0))], dtype=torch.float32),
+        "pad": torch.tensor([rev_info.get("pad", (0.0, 0.0))], dtype=torch.float32),
+        "size": torch.tensor([rev_info.get("size", (image_tensor.shape[-2], image_tensor.shape[-1]))], dtype=torch.float32),
+        "auto": torch.tensor([rev_info.get("auto", True)], dtype=torch.bool),
+        "scaleup": torch.tensor([rev_info.get("scaleup", True)], dtype=torch.bool),
+        "stride": torch.tensor([rev_info.get("stride", 32)], dtype=torch.int32),
+    }
 
     nms_config = NMSConfig(nms_confidence, nms_iou, max_bbox)
     post_proccess = PostProcess(converter, nms_config)

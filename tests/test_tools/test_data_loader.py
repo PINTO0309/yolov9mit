@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -24,7 +25,9 @@ def test_create_dataloader_cache(train_cfg: Config):
     l_batch_size, l_images, _, l_reverse_tensors, l_image_paths = next(iter(load_cache_loader))
     assert m_batch_size == l_batch_size
     assert m_images.shape == l_images.shape
-    assert m_reverse_tensors.shape == l_reverse_tensors.shape
+    assert isinstance(m_reverse_tensors, dict)
+    assert isinstance(l_reverse_tensors, dict)
+    assert tuple(m_reverse_tensors["ratio"].shape) == tuple(l_reverse_tensors["ratio"].shape)
     assert m_image_paths == l_image_paths
 
 
@@ -33,7 +36,8 @@ def test_training_data_loader_correctness(train_dataloader: DataLoader):
     batch_size, images, _, reverse_tensors, image_paths = next(iter(train_dataloader))
     assert batch_size == 2
     assert images.shape == (2, 3, 640, 640)
-    assert reverse_tensors.shape == (2, 5)
+    assert isinstance(reverse_tensors, dict)
+    assert reverse_tensors["ratio"].shape == torch.Size([2, 2])
     for path in image_paths:
         assert Path(path).exists()
         assert "images/train" in str(path)
@@ -44,7 +48,8 @@ def test_validation_data_loader_correctness(validation_dataloader: DataLoader):
     assert batch_size == 5
     assert images.shape == (5, 3, 640, 640)
     assert targets.shape == (5, 18, 5)
-    assert reverse_tensors.shape == (5, 5)
+    assert isinstance(reverse_tensors, dict)
+    assert reverse_tensors["ratio"].shape == torch.Size([5, 2])
     expected_paths = [
         Path("tests/data/images/val/000000151480.jpg"),
         Path("tests/data/images/val/000000284106.jpg"),
@@ -59,7 +64,8 @@ def test_file_stream_data_loader_frame(file_stream_data_loader: StreamDataLoader
     """Test the frame output from the file stream data loader."""
     frame, rev_tensor, origin_frame = next(iter(file_stream_data_loader))
     assert frame.shape == (1, 3, 640, 640)
-    assert rev_tensor.shape == (1, 5)
+    assert isinstance(rev_tensor, dict)
+    assert rev_tensor["ratio"].shape == torch.Size([1, 2])
     assert origin_frame.size == (1024, 768)
 
 
@@ -67,7 +73,8 @@ def test_directory_stream_data_loader_frame(directory_stream_data_loader: Stream
     """Test the frame output from the directory stream data loader."""
     frame, rev_tensor, origin_frame = next(iter(directory_stream_data_loader))
     assert frame.shape == (1, 3, 640, 640)
-    assert rev_tensor.shape == (1, 5)
+    assert isinstance(rev_tensor, dict)
+    assert rev_tensor["ratio"].shape == torch.Size([1, 2])
     assert origin_frame.size != (640, 640)
 
 
