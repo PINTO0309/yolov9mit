@@ -83,6 +83,9 @@ class MatcherConfig:
     iou: str
     topk: int
     factor: Dict[str, int]
+    candidate_policy: str = "box"
+    reg_slack: float = 0.01
+    center_radius: float = 2.5
 
 
 @dataclass

@@ -9,10 +9,23 @@ data:
   data_augment: {}
   dynamic_shape: False
 nms:
-  min_confidence: 0.0001 # 0.0001
+  min_confidence: 0.0001
   min_iou: 0.7
-  pre_topk: 20000 # pre-nms bboxes, Limit to top K pre-NMS per image (disable with None), (Default)None
-  max_bbox: 20000 # post-nms bboxes, (Default)1000
+  # Validation computational load (e.g. 2460 images, Maximum number of labels per image: 3,875)
+  # Larger values ​​of pre_topk and max_bbox allow for more accurate validation, but the trade-off is computation time.
+  # However, the calculation time varies depending on the number of labels in the validation set.
+  # In the example below, 4000 is the most accurate validation result but also the most computationally time-consuming.
+  # This means that the maximum number of labels detected in one image in the validation set was less than 4000.
+  # Smaller pre_topk and max_bbox will make validation much faster, but will also make the mAP appear significantly worse on the surface,
+  # since most of the labels that could have been correctly detected will be excluded from validation.
+  #   pre_topk=100, max_bbox=100: 44 sec
+  #   pre_topk=300, max_bbox=300: 50 sec
+  #   pre_topk=1000, max_bbox=1000: 88 sec
+  #   pre_topk=4000, max_bbox=4000: 163 sec
+  #   pre_topk=5000, max_bbox=5000: 165 sec
+  #   pre_topk=20000, max_bbox=20000: 167 sec
+  pre_topk: 300 # pre-nms bboxes, Limit to top K pre-NMS per image (disable with None), (Default)20000
+  max_bbox: 300 # post-nms bboxes, (Default)20000
 
   # multi_label=True: Expand all classes exceeding the threshold for a single anchor to "candidates"
   # multi_label=False: Select only the top-ranked class per anchor as a candidate (= single-label)
@@ -20,10 +33,11 @@ nms:
   # class_agnostic=False: NMS runs by class (different classes are not suppressed)
 
   # True: multi-label expansion, (Default)False : Top-1 only
-  multi_label: True
+  # After training using a dataset with multiple classes defined in the same position and size, you should change it to True and re-run validation.
+  multi_label: False
   # (Default)True: Class-ignoring NMS, False: Class-specific NMS
   # After training using a dataset with multiple classes defined in the same position and size, you should change it to False and re-run validation.
-  class_agnostic: True
+  class_agnostic: False
   size_bias_alpha: 0.0 # >0 to slightly increase large (e.g. 0.05)
 
 # Whether to print per-class mAP on validation end

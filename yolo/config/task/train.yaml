@@ -126,6 +126,9 @@ loss:
     factor:
       iou: 6.0
       cls: 0.5
+    candidate_policy: box  # and|(Default)box|center|or
+    reg_slack: 0.01
+    center_radius: 2.5
 
 scheduler:
   type: LinearLR
