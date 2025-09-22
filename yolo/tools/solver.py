@@ -1,7 +1,9 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from contextlib import suppress, nullcontext
 from dataclasses import asdict, is_dataclass
 from math import ceil
 from pathlib import Path
+import traceback
 
 from lightning import LightningModule
 from lightning.pytorch.loggers import TensorBoardLogger
@@ -411,6 +413,10 @@ class TrainModel(ValidateModel):
         self.cfg = cfg
         self.train_loader = create_dataloader(self.cfg.task.data, self.cfg.dataset, self.cfg.task.task)
         self._nms_logged = False
+        self._highest_eval_enabled = bool(
+            getattr(getattr(self.validation_cfg, "nms", None), "highest_eval_in_the_final_epoch", False)
+        )
+        self._final_eval_triggered = False
 
     def setup(self, stage):
         super().setup(stage)
@@ -490,6 +496,126 @@ class TrainModel(ValidateModel):
 
     def train_dataloader(self):
         return self.train_loader
+
+    def on_fit_end(self):
+        super().on_fit_end()
+        trainer = getattr(self, "trainer", None)
+        if not trainer or getattr(trainer, "sanity_checking", False):
+            return
+        if not self._highest_eval_enabled or self._final_eval_triggered:
+            return
+
+        # Guard against scenarios where training terminated before reaching the nominal final epoch.
+        # Still honour the request by running the highest-precision evaluation once at shutdown.
+        self._final_eval_triggered = True
+        strategy = getattr(trainer, "strategy", None)
+        if strategy and hasattr(strategy, "barrier"):
+            with suppress(Exception):
+                strategy.barrier("highest_eval_sync_start")
+
+        progress_bar = getattr(trainer, "progress_bar_callback", None)
+        pb_context = nullcontext()
+        pb_restore = None
+        if progress_bar and hasattr(progress_bar, "disable"):
+            try:
+                maybe_ctx = progress_bar.disable()
+            except Exception:
+                maybe_ctx = None
+            if hasattr(maybe_ctx, "__enter__") and hasattr(maybe_ctx, "__exit__"):
+                pb_context = maybe_ctx
+            else:
+                pb_restore = getattr(progress_bar, "enable", None)
+
+        overrides_backup = None
+        success = False
+        with pb_context:
+            if getattr(trainer, "is_global_zero", True):
+                # Ensure progress updates are paused so the status message is not overwritten.
+                logger.info("⏳ The most accurate validation is underway and the evaluation takes just a few minutes.")
+            try:
+                val_loaders = self._prepare_validation_dataloaders()
+                overrides_backup = self._apply_highest_eval_overrides()
+                trainer.validate(self, dataloaders=val_loaders, ckpt_path=None, verbose=False)
+                success = True
+            except Exception as exc:
+                logger.warning(f":warning: Final high-precision validation failed: {exc}")
+                logger.debug(traceback.format_exc())
+            finally:
+                self._restore_nms(overrides_backup)
+                self._flush_tensorboard_loggers()
+                if strategy and hasattr(strategy, "barrier"):
+                    with suppress(Exception):
+                        strategy.barrier("highest_eval_sync_flush")
+                self._flush_tensorboard_loggers()
+                if callable(pb_restore):
+                    with suppress(Exception):
+                        pb_restore()
+                if getattr(trainer, "is_global_zero", True):
+                    if success:
+                        logger.info("✅ The most accurate validation has been completed.")
+                    else:
+                        logger.info("⚠ Most accurate validation was not completed. Please check the logs.")
+
+    def _flush_tensorboard_loggers(self):
+        trainer = getattr(self, "trainer", None)
+        if not trainer:
+            return
+        for lg in getattr(trainer, "loggers", []) or []:
+            experiment = getattr(lg, "experiment", None)
+            flush_fn = getattr(experiment, "flush", None)
+            if callable(flush_fn):
+                with suppress(Exception):
+                    flush_fn()
+
+    def _prepare_validation_dataloaders(self):
+        loaders = self.val_dataloader()
+        if loaders is None:
+            return None
+        if isinstance(loaders, Sequence):
+            return list(loaders)
+        return [loaders]
+
+    def _get_highest_eval_overrides(self):
+        nms_cfg = getattr(self.validation_cfg, "nms", None)
+        if nms_cfg is None:
+            return None
+
+        overrides = getattr(nms_cfg, "highest_eval_overrides", None)
+        if overrides:
+            return dict(overrides)
+
+        # Fallback to the documented "highest precision" defaults
+        return {
+            "min_confidence": 1e-4,
+            "min_iou": 0.7,
+            "pre_topk": 20000,
+            "max_bbox": 20000,
+            "multi_label": True,
+            "class_agnostic": False,
+        }
+
+    def _apply_highest_eval_overrides(self):
+        nms_cfg = getattr(self.validation_cfg, "nms", None)
+        overrides = self._get_highest_eval_overrides()
+        if nms_cfg is None or not overrides:
+            return None
+
+        state = vars(nms_cfg)
+        backup = {key: state.get(key) for key in overrides}
+        # Update in place so PostProcess sees the new thresholds
+        for key, value in overrides.items():
+            state[key] = value
+        return backup
+
+    def _restore_nms(self, backup):
+        if not backup:
+            return
+        nms_cfg = getattr(self.validation_cfg, "nms", None)
+        if nms_cfg is None:
+            return
+        state = vars(nms_cfg)
+        for key, value in backup.items():
+            state[key] = value
 
     def on_train_epoch_start(self):
         self.trainer.optimizers[0].next_epoch(

@@ -143,6 +143,8 @@ class NMSConfig:
     multi_label: bool = False
     class_agnostic: bool = False
     size_bias_alpha: float = 0.0
+    highest_eval_in_the_final_epoch: bool = False
+    highest_eval_overrides: Optional[Dict[str, Any]] = None
 
 
 @dataclass
