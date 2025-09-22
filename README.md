@@ -416,13 +416,16 @@ BATCHSIZE=32
 # However, setting a value that exceeds the maximum number of labels contained
 # in one image will have no effect. For example, in my dataset, an image contains
 # a maximum of 3,875 labels, so setting it to 4,000 is appropriate.
-MAXDET=5000
+MAXDET=20000
 
 uv run python yolo/lazy.py \
 task=validation \
 name=v9-${VARIANT} \
 task.data.batch_size=${BATCHSIZE} \
+task.nms.pre_topk=${MAXDET} \
 task.nms.max_bbox=${MAXDET} \
+task.nms.multi_label=True \
+task.nms.class_agnostic=False \
 model=v9-${VARIANT} \
 weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.pt" \
 dataset=wholebody34 \
