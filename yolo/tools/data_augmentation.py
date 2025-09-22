@@ -864,11 +864,24 @@ class RandomRain:
 
             Cls = A.RandomRain
             params = inspect.signature(Cls.__init__).parameters
+            if isinstance(image, Image.Image):
+                img_w, img_h = image.size
+            else:
+                arr_for_shape = np.asarray(image)
+                img_h, img_w = arr_for_shape.shape[:2]
+                if img_h <= 1 or img_w <= 1:
+                    return image, boxes
+            if img_h <= 1 or img_w <= 1:
+                return image, boxes
             sl_l, sl_u = int(self.slant_range[0]), int(self.slant_range[1])
             dl = int(torch.randint(int(self.drop_length[0]), int(self.drop_length[1]) + 1, (1,)).item())
             dw = int(torch.randint(int(self.drop_width_range[0]), int(self.drop_width_range[1]) + 1, (1,)).item())
             bv = int(torch.randint(int(self.blur_value[0]), int(self.blur_value[1]) + 1, (1,)).item())
             bc = float(torch.empty(1).uniform_(float(self.brightness_coefficient[0]), float(self.brightness_coefficient[1])).item())
+            max_drop_length = max(1, img_h - 1)
+            if max_drop_length <= 0:
+                return image, boxes
+            dl = max(1, min(dl, max_drop_length))
             kwargs = {"p": 1.0}
             if "slant_range" in params:
                 kwargs["slant_range"] = (sl_l, sl_u)
