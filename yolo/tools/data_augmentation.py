@@ -873,15 +873,31 @@ class RandomRain:
                     return image, boxes
             if img_h <= 1 or img_w <= 1:
                 return image, boxes
-            sl_l, sl_u = int(self.slant_range[0]), int(self.slant_range[1])
-            dl = int(torch.randint(int(self.drop_length[0]), int(self.drop_length[1]) + 1, (1,)).item())
-            dw = int(torch.randint(int(self.drop_width_range[0]), int(self.drop_width_range[1]) + 1, (1,)).item())
-            bv = int(torch.randint(int(self.blur_value[0]), int(self.blur_value[1]) + 1, (1,)).item())
-            bc = float(torch.empty(1).uniform_(float(self.brightness_coefficient[0]), float(self.brightness_coefficient[1])).item())
+            sl_l, sl_u = sorted(int(v) for v in self.slant_range)
+            dl_low, dl_high = sorted(int(v) for v in self.drop_length)
+            dw_low, dw_high = sorted(int(v) for v in self.drop_width_range)
+            bv_low, bv_high = sorted(int(v) for v in self.blur_value)
+            bc_low, bc_high = sorted(float(v) for v in self.brightness_coefficient)
             max_drop_length = max(1, img_h - 1)
             if max_drop_length <= 0:
                 return image, boxes
-            dl = max(1, min(dl, max_drop_length))
+            dl_high = min(dl_high, max_drop_length)
+            dl_low = max(1, min(dl_low, dl_high))
+            if dl_low > dl_high:
+                return image, boxes
+            dw_low = max(1, dw_low)
+            dw_high = max(dw_low, dw_high)
+            bv_low = max(1, bv_low)
+            bv_high = max(bv_low, bv_high)
+            if bc_high <= bc_low:
+                bc_high = bc_low
+            if bc_high > bc_low:
+                bc = float(torch.empty(1).uniform_(bc_low, bc_high).item())
+            else:
+                bc = float(bc_low)
+            dl = int(torch.randint(dl_low, dl_high + 1, (1,)).item())
+            dw = int(torch.randint(dw_low, dw_high + 1, (1,)).item())
+            bv = int(torch.randint(bv_low, bv_high + 1, (1,)).item())
             kwargs = {"p": 1.0}
             if "slant_range" in params:
                 kwargs["slant_range"] = (sl_l, sl_u)
@@ -921,8 +937,14 @@ class RandomFog:
 
             Cls = A.RandomFog
             params = inspect.signature(Cls.__init__).parameters
-            fog_lower, fog_upper = float(self.fog_coef[0]), float(self.fog_coef[1])
-            alpha = float(torch.empty(1).uniform_(float(self.alpha_coef[0]), float(self.alpha_coef[1])).item())
+            fog_lower, fog_upper = sorted(float(v) for v in self.fog_coef)
+            alpha_low, alpha_high = sorted(float(v) for v in self.alpha_coef)
+            if fog_upper <= fog_lower:
+                fog_upper = fog_lower
+            if alpha_high <= alpha_low:
+                alpha = float(alpha_low)
+            else:
+                alpha = float(torch.empty(1).uniform_(alpha_low, alpha_high).item())
             kwargs = {"p": 1.0}
             if "fog_coef" in params:
                 kwargs["fog_coef"] = (fog_lower, fog_upper)
@@ -956,8 +978,25 @@ class RandomSunFlare:
         try:
             import albumentations as A
 
-            src_radius = int(torch.randint(int(self.src_radius_range[0]), int(self.src_radius_range[1]) + 1, (1,)).item())
-            intensity = float(torch.empty(1).uniform_(float(self.src_intensity[0]), float(self.src_intensity[1])).item())
+            if isinstance(image, Image.Image):
+                img_w, img_h = image.size
+            else:
+                arr_for_shape = np.asarray(image)
+                img_h, img_w = arr_for_shape.shape[:2]
+            if img_h <= 1 or img_w <= 1:
+                return image, boxes
+            radius_low, radius_high = sorted(int(v) for v in self.src_radius_range)
+            max_radius = max(1, min(img_w, img_h) // 2)
+            radius_high = max(1, min(radius_high, max_radius))
+            radius_low = max(1, min(radius_low, radius_high))
+            if radius_low > radius_high:
+                return image, boxes
+            intensity_low, intensity_high = sorted(float(v) for v in self.src_intensity)
+            if intensity_high <= intensity_low:
+                intensity = float(intensity_low)
+            else:
+                intensity = float(torch.empty(1).uniform_(intensity_low, intensity_high).item())
+            src_radius = int(torch.randint(radius_low, radius_high + 1, (1,)).item())
             Cls = A.RandomSunFlare
             params = inspect.signature(Cls.__init__).parameters
             kwargs = {"src_radius": src_radius, "p": 1.0, "flare_roi": (0, 0, 1, 1)}
