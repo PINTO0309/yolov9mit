@@ -17,7 +17,7 @@ from yolo.tools.drawer import draw_bboxes
 from yolo.tools.loss_functions import create_loss_function
 from yolo.utils.bounding_box_utils import create_converter, to_metrics_format
 from yolo.utils.logger import logger
-from yolo.utils.model_utils import PostProcess, create_optimizer, create_scheduler
+from yolo.utils.model_utils import PostProcess, SaveBestWeights, create_optimizer, create_scheduler
 from yolo.utils.deploy_utils import FastModelLoader
 
 
@@ -528,6 +528,7 @@ class TrainModel(ValidateModel):
 
         overrides_backup = None
         success = False
+        eval_metrics: dict[str, object] = {}
         with pb_context:
             if getattr(trainer, "is_global_zero", True):
                 # Ensure progress updates are paused so the status message is not overwritten.
@@ -535,7 +536,11 @@ class TrainModel(ValidateModel):
             try:
                 val_loaders = self._prepare_validation_dataloaders()
                 overrides_backup = self._apply_highest_eval_overrides()
-                trainer.validate(self, dataloaders=val_loaders, ckpt_path=None, verbose=False)
+                results = trainer.validate(self, dataloaders=val_loaders, ckpt_path=None, verbose=False)
+                if isinstance(results, Sequence):
+                    for item in results:
+                        if isinstance(item, Mapping):
+                            eval_metrics.update(item)
                 success = True
             except Exception as exc:
                 logger.warning(f":warning: Final high-precision validation failed: {exc}")
@@ -555,6 +560,25 @@ class TrainModel(ValidateModel):
                         logger.info("✅ The most accurate validation has been completed.")
                     else:
                         logger.info("⚠ Most accurate validation was not completed. Please check the logs.")
+        if success and getattr(trainer, "is_global_zero", True):
+            if not eval_metrics:
+                callback_metrics = getattr(trainer, "callback_metrics", {}) or {}
+                if isinstance(callback_metrics, Mapping):
+                    eval_metrics.update(callback_metrics)
+                else:
+                    eval_metrics.update(dict(callback_metrics))
+            if eval_metrics:
+                self._update_best_weights_after_highest_eval(trainer, eval_metrics)
+        if getattr(trainer, "is_global_zero", True):
+            if progress_bar:
+                printer = getattr(progress_bar, "print", None)
+                if callable(printer):
+                    with suppress(Exception):
+                        printer("")
+                else:
+                    print()
+            else:
+                print()
 
     def _flush_tensorboard_loggers(self):
         trainer = getattr(self, "trainer", None)
@@ -616,6 +640,17 @@ class TrainModel(ValidateModel):
         state = vars(nms_cfg)
         for key, value in backup.items():
             state[key] = value
+
+    def _update_best_weights_after_highest_eval(self, trainer, metrics: Mapping[str, object]) -> None:
+        if not getattr(trainer, "is_global_zero", True):
+            return
+        callbacks = getattr(trainer, "callbacks", None)
+        if not callbacks:
+            return
+        for cb in callbacks:
+            if isinstance(cb, SaveBestWeights):
+                cb.update_from_metrics(trainer, self, metrics)
+                break
 
     def on_train_epoch_start(self):
         self.trainer.optimizers[0].next_epoch(

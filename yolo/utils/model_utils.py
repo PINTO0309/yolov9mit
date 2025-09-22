@@ -1,8 +1,9 @@
 import os
+from collections import OrderedDict
+from collections.abc import Mapping
 from copy import deepcopy
 from math import exp
 from pathlib import Path
-from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import torch
@@ -136,72 +137,88 @@ class SaveBestWeights(Callback):
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         return ckpt_dir
 
-    @rank_zero_only
-    def on_fit_start(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
-        self.ckpt_dir = self._resolve_ckpt_dir(trainer)
-
-    @rank_zero_only
-    def on_validation_epoch_end(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
-        # Ensure checkpoint directory is ready
+    def _ensure_ckpt_dir(self, trainer: "Trainer") -> Path:
         if self.ckpt_dir is None:
             self.ckpt_dir = self._resolve_ckpt_dir(trainer)
+        return self.ckpt_dir
 
-        # Determine current weights to save (prefer EMA if available)
+    @staticmethod
+    def _select_model(pl_module: "LightningModule"):
         model_to_save = getattr(pl_module, "ema", None)
         if model_to_save is None:
             model_to_save = getattr(pl_module, "model", pl_module)
+        return model_to_save
 
-        # Helper: export to official flat state_dict without leading 'model.'
-        def export_official_state_dict(module) -> "OrderedDict[str, torch.Tensor]":
-            sd = module.state_dict()
-            flat = {}
-            for k, v in sd.items():
-                if k.startswith("model."):
-                    nk = k[len("model."):]
-                else:
-                    nk = k
-                flat[nk] = v.detach().to("cpu")
-            # Preserve insertion order
-            from collections import OrderedDict
-            return OrderedDict(flat)
+    @staticmethod
+    def _export_official_state_dict(module) -> "OrderedDict[str, torch.Tensor]":
+        state_dict = module.state_dict()
+        flat = OrderedDict()
+        for key, value in state_dict.items():
+            new_key = key[len("model.") :] if key.startswith("model.") else key
+            flat[new_key] = value.detach().to("cpu")
+        return flat
 
-        # Save last.pt every validation epoch in official format
-        last_path = self.ckpt_dir / "last.pt"
-        torch.save(export_official_state_dict(model_to_save), last_path)
+    @staticmethod
+    def _extract_variant(pl_module: "LightningModule") -> str:
+        cfg = getattr(pl_module, "cfg", None)
+        model_cfg = getattr(cfg, "model", None) if cfg is not None else None
+        name = getattr(model_cfg, "name", None)
+        if not name:
+            return "unknown"
+        name_str = str(name).lower()
+        return name_str.split("-")[-1] if "-" in name_str else name_str
 
-        # Get current mAP from logged metrics
-        metrics = getattr(trainer, "callback_metrics", {}) or {}
-        current_map = metrics.get("map")
+    @staticmethod
+    def _to_float(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 1:
+                return float(value.item())
+            return None
         try:
-            current_map = float(current_map) if current_map is not None else None
-        except Exception:
-            current_map = None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
+    def _extract_map(self, metrics: Mapping[str, Any]) -> Optional[float]:
+        # Primary key
+        current = self._to_float(metrics.get("map"))
+        if current is not None:
+            return current
+
+        # Fallback to human-readable alias if present
+        alt = self._to_float(metrics.get("PyCOCO/AP @ .5:.95"))
+        if alt is not None:
+            return alt / 100.0 if alt > 1.0 else alt
+
+        return None
+
+    def update_from_metrics(
+        self, trainer: "Trainer", pl_module: "LightningModule", metrics: Mapping[str, Any] | None
+    ) -> None:
+        metrics = metrics or {}
+        # Ensure directory exists before attempting any writes
+        ckpt_dir = self._ensure_ckpt_dir(trainer)
+
+        model_to_save = self._select_model(pl_module)
+        official_state = self._export_official_state_dict(model_to_save)
+
+        # Always refresh last.pt so downstream export tools see the latest weights
+        torch.save(official_state, ckpt_dir / "last.pt")
+
+        current_map = self._extract_map(metrics)
         if current_map is None:
             return
 
-        # If new best, save best_{variant}_XXXX_0.0000.pt and remove previous best
         if current_map > self.best_map:
             epoch = int(getattr(trainer, "current_epoch", 0))
-            # Extract variant from cfg.model.name (e.g., v9-t -> t)
-            def extract_variant(module):
-                cfg = getattr(module, "cfg", None)
-                model_obj = getattr(cfg, "model", None) if cfg is not None else None
-                name = getattr(model_obj, "name", None)
-                if not name:
-                    return "unknown"
-                s = str(name).lower()
-                if "-" in s:
-                    return s.split("-")[-1]
-                return s
-
-            variant = extract_variant(pl_module)
+            variant = self._extract_variant(pl_module)
             best_name = f"best_{variant}_{epoch:04d}_{current_map:.4f}.pt"
-            best_path = self.ckpt_dir / best_name
+            best_path = ckpt_dir / best_name
 
-            torch.save(export_official_state_dict(model_to_save), best_path)
+            torch.save(official_state, best_path)
 
-            # Remove previous best if exists
             if self.best_path is not None and self.best_path.exists():
                 try:
                     self.best_path.unlink()
@@ -210,6 +227,17 @@ class SaveBestWeights(Callback):
 
             self.best_map = current_map
             self.best_path = best_path
+
+    @rank_zero_only
+    def on_fit_start(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
+        self.ckpt_dir = self._resolve_ckpt_dir(trainer)
+
+    @rank_zero_only
+    def on_validation_epoch_end(self, trainer: "Trainer", pl_module: "LightningModule") -> None:
+        metrics = getattr(trainer, "callback_metrics", {}) or {}
+        if not isinstance(metrics, Mapping):
+            metrics = dict(metrics)
+        self.update_from_metrics(trainer, pl_module, metrics)
 
 
 def create_optimizer(model: YOLO, optim_cfg: OptimizerConfig) -> Optimizer:
