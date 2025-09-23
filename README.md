@@ -45,7 +45,7 @@ source .venv/bin/activate
 
 ## Task
 
-These are simple examples. For more customization details, please refer to [Notebooks](examples) and lower-level modifications **[HOWTO](docs/HOWTO.md)**.
+For more customization details, please refer to **[HOWTO](docs/HOWTO.md)**.
 
 ## YOLO format dataset structure
 
