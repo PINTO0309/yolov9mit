@@ -87,22 +87,22 @@ data:
     #   color_shift: [0.01, 0.05]
 
     # Albumentations-based: weather/lighting
-    RandomRain:
-      prob: 0.01
-      slant_range: [-10, 10]
-      drop_length: [15, 30]
-      drop_width_range: [1, 2]
-      density: [0.002, 0.006]
-      blur_value: [3, 5]
-      brightness_coefficient: [0.9, 1.0]
-    RandomFog:
-      prob: 0.01
-      fog_coef: [0.3, 0.6]
-      alpha_coef: [0.05, 0.1]
-    RandomSunFlare:
-      prob: 0.01
-      src_radius_range: [50, 150]
-      src_intensity: [0.6, 1.0]
+    # RandomRain:
+    #   prob: 0.01
+    #   slant_range: [-10, 10]
+    #   drop_length: [15, 30]
+    #   drop_width_range: [1, 2]
+    #   density: [0.002, 0.006]
+    #   blur_value: [3, 5]
+    #   brightness_coefficient: [0.9, 1.0]
+    # RandomFog:
+    #   prob: 0.01
+    #   fog_coef: [0.3, 0.6]
+    #   alpha_coef: [0.05, 0.1]
+    # RandomSunFlare:
+    #   prob: 0.01
+    #   src_radius_range: [50, 150]
+    #   src_intensity: [0.6, 1.0]
 
 
 optimizer:
