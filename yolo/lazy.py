@@ -13,7 +13,7 @@ from yolo.tools.solver import InferenceModel, TrainModel, ValidateModel
 from yolo.tools.exporter import ONNXExporter
 from yolo.utils.logging_utils import set_seed, setup
 from yolo.utils.logger import logger
-
+import torch.multiprocessing as mp
 
 def _clear_dataset_cache_if_resuming(cfg: Config) -> None:
     """Remove stale dataset cache files when resuming training."""
@@ -99,4 +99,7 @@ def main(cfg: Config):
 
 
 if __name__ == "__main__":
+    # Countermeasure for situations where resume is unstable and CUDA initialization error occurs
+    # https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+    mp.set_start_method("spawn", force=True)
     main()
