@@ -47,13 +47,13 @@ data:
       value_gain: 0.4
     # RandomBrightness:
     #   prob: 0.01
-    #   factor_range: [0.7, 1.3]
+    #   factor_range: [0.8, 1.2]
     # RandomContrast:
     #   prob: 0.01
-    #   factor_range: [0.7, 1.3]
+    #   factor_range: [0.8, 1.2]
     # RandomSaturation:
     #   prob: 0.01
-    #   factor_range: [0.7, 1.3]
+    #   factor_range: [0.8, 1.2]
 
     # Albumentations-based: blur/noise/compression
     ToGray: 0.01
