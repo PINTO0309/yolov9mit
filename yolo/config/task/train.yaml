@@ -49,6 +49,8 @@ data:
     #   prob: 0.01
     #   factor_range: [0.8, 1.2]
 
+    RemoveOutliers: 1e-8
+
     # Albumentations-based: blur/noise/compression
     Blur:
       prob: 0.01
@@ -103,7 +105,6 @@ data:
       hue_gain: 0.015
       saturation_gain: 0.7
       value_gain: 0.4
-    RemoveOutliers: 1e-8
 
 optimizer:
   type: SGD
