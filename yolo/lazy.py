@@ -15,6 +15,46 @@ from yolo.utils.logging_utils import set_seed, setup
 from yolo.utils.logger import logger
 
 
+def _clear_dataset_cache_if_resuming(cfg: Config) -> None:
+    """Remove stale dataset cache files when resuming training."""
+
+    try:
+        resume_ckpt = getattr(cfg.task, "resume_ckpt", None)
+    except AttributeError:
+        return
+
+    if not resume_ckpt:
+        return
+
+    # Prevent multiple distributed ranks from attempting to delete at once.
+    if os.getenv("RANK", "0") not in {"0", "-1"}:
+        return
+
+    dataset_cfg = getattr(cfg, "dataset", None)
+    dataset_path = getattr(dataset_cfg, "path", None) if dataset_cfg is not None else None
+    if not dataset_path:
+        return
+
+    cache_dir = Path(dataset_path)
+    cache_files = list(cache_dir.glob("*.pache")) if cache_dir.exists() else []
+    if not cache_files:
+        return
+
+    removed = []
+    for cache_file in cache_files:
+        try:
+            cache_file.unlink()
+            removed.append(cache_file.name)
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            logger.warning(f":warning: Failed to delete cache {cache_file}: {exc}")
+
+    if removed:
+        removed_str = ", ".join(sorted(removed))
+        logger.info(f":broom: Removed dataset cache(s) before resume: {removed_str}")
+
+
 @hydra.main(config_path="config", config_name="config", version_base=None)
 def main(cfg: Config):
     # Ensure reproducibility across DDP processes before any workload starts
@@ -46,6 +86,7 @@ def main(cfg: Config):
     )
 
     if cfg.task.task == "train":
+        _clear_dataset_cache_if_resuming(cfg)
         model = TrainModel(cfg)
         ckpt = getattr(cfg.task, "resume_ckpt", None)
         trainer.fit(model, ckpt_path=ckpt)
