@@ -23,14 +23,14 @@ data:
     #   sample_num: 1
     #   max_paste_objects: 5
     #   scale_jitter: [0.8, 1.2]
-    Translation:
-      prob: 1.0
-      translate: 0.1
-      fill: [114, 114, 114]
     RandomScale:
       prob: 1.0
       scale_range: [0.1, 1.9]
       keep_aspect_ratio: true
+    Translation:
+      prob: 1.0
+      translate: 0.1
+      fill: [114, 114, 114]
     # RandomCrop: 0.5
     # RandomResizedCrop:
     #   prob: 0.25
@@ -40,11 +40,6 @@ data:
     #   ratio: [0.75, 1.33]
     #   min_visibility: 0.25
     # HorizontalFlip: 0.5
-    RandomHSV:
-      prob: 1.00
-      hue_gain: 0.015
-      saturation_gain: 0.7
-      value_gain: 0.4
     # RandomBrightness:
     #   prob: 0.01
     #   factor_range: [0.8, 1.2]
@@ -104,6 +99,11 @@ data:
     #   src_radius_range: [50, 150]
     #   src_intensity: [0.6, 1.0]
 
+    RandomHSV:
+      prob: 1.00
+      hue_gain: 0.015
+      saturation_gain: 0.7
+      value_gain: 0.4
 
 optimizer:
   type: SGD
