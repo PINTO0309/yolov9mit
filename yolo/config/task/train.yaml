@@ -45,9 +45,9 @@ data:
       hue_gain: 0.015
       saturation_gain: 0.7
       value_gain: 0.4
-    RandomBrightness:
-      prob: 0.01
-      factor_range: [0.7, 1.3]
+    # RandomBrightness:
+    #   prob: 0.01
+    #   factor_range: [0.7, 1.3]
     # RandomContrast:
     #   prob: 0.01
     #   factor_range: [0.7, 1.3]
