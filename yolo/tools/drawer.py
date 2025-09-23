@@ -50,10 +50,23 @@ def draw_bboxes(
         class_id, x_min, y_min, x_max, y_max, *conf = [float(val) for val in bbox]
         x_min, x_max = min(x_min, x_max), max(x_min, x_max)
         y_min, y_max = min(y_min, y_max), max(y_min, y_max)
+
+        width = x_max - x_min
+        height = y_max - y_min
+        if width <= 0 or height <= 0:
+            continue
+
         bbox = [(x_min, y_min), (x_max, y_max)]
         white_w = 3
         offset = white_w // 2
-        inner_bbox = [(x_min + offset, y_min + offset), (x_max - offset, y_max - offset)]
+
+        inner_bbox = None
+        inner_x_min = x_min + offset
+        inner_y_min = y_min + offset
+        inner_x_max = x_max - offset
+        inner_y_max = y_max - offset
+        if inner_x_max > inner_x_min and inner_y_max > inner_y_min:
+            inner_bbox = [(inner_x_min, inner_y_min), (inner_x_max, inner_y_max)]
 
         random.seed(int(class_id))
         color_map = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200))
@@ -65,12 +78,13 @@ def draw_bboxes(
             fill=((*color_map, 100) if fill else None),
             width=white_w,
         )
-        draw.rectangle(
-            inner_bbox,
-            outline=(*color_map, 200),
-            fill=((*color_map, 100) if fill else None),
-            width=white_w//2,
-        )
+        if inner_bbox is not None:
+            draw.rectangle(
+                inner_bbox,
+                outline=(*color_map, 200),
+                fill=((*color_map, 100) if fill else None),
+                width=max(1, white_w // 2),
+            )
 
         if draw_labels:
             class_text = str(idx2label[int(class_id)] if idx2label else int(class_id))
