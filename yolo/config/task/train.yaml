@@ -51,17 +51,17 @@ data:
     #   factor_range: [0.8, 1.2]
 
     # Albumentations-based: blur/noise/compression
-    ToGray: 0.01
-    CLAHE:
-      prob: 0.01
-      clip_limit: 4.0
-      tile_grid_size: [8, 8]
     Blur:
       prob: 0.01
       blur_limit: [3, 7]
     MedianBlur:
       prob: 0.01
       blur_limit: [3, 7]
+    ToGray: 0.01
+    CLAHE:
+      prob: 0.01
+      clip_limit: 4.0
+      tile_grid_size: [8, 8]
     # MotionBlur:
     #   prob: 0.01
     #   blur_limit: [5, 15]
