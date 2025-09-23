@@ -15,7 +15,6 @@ data:
   class_biased_oversampling: false
   class_biased_batch_formation: false
   data_augment:
-    RemoveOutliers: 1e-8
     # Mosaic: 1.0
     # MixUp: 1.0
     # CopyPaste:
@@ -104,6 +103,7 @@ data:
       hue_gain: 0.015
       saturation_gain: 0.7
       value_gain: 0.4
+    RemoveOutliers: 1e-8
 
 optimizer:
   type: SGD
