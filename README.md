@@ -151,11 +151,11 @@ uv run python yolo/lazy.py task=train task.data.batch_size=8 model=v9-c weight=F
 To perform transfer learning with YOLOv9:
 
 - `configs`
-  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/config.yaml
-  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/general.yaml
-  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/train.yaml
-  - https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/validation.yaml
-  - https://github.com/PINTO0309/yolov9mit/tree/wholebody/yolo/config/model
+  - https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/config.yaml
+  - https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/general.yaml
+  - https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/task/train.yaml
+  - https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/task/validation.yaml
+  - https://github.com/PINTO0309/YOLO/tree/wholebody/yolo/config/model
 
 ```shell
 # n, t, s, c, e
@@ -364,7 +364,7 @@ RENDER_LABELS=False
 # and you will not see any inference results.
 # The number of classes in the head part of the weights used for inference
 # must match `class_num`.
-# https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/dataset/wholebody34.yaml
+# https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/dataset/wholebody34.yaml
 ---
 path: data/wholebody34
 train: train
@@ -400,7 +400,7 @@ VARIANT=n
 # Otherwise, the mAP value after validation will be significantly degraded.
 # data:
 #  batch_size: 32
-# https://github.com/PINTO0309/yolov9mit/blob/wholebody/yolo/config/task/validation.yaml
+# https://github.com/PINTO0309/YOLO/blob/wholebody/yolo/config/task/validation.yaml
 BATCHSIZE=32
 # The higher the model's performance, the more accurate the evaluation will be
 # if the MAXDET value (the upper limit of the number of detections) is set to
