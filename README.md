@@ -33,8 +33,8 @@ Welcome to the official implementation of YOLOv7[^1] and YOLOv9[^2], YOLO-RD[^3]
 To get started using YOLOv9's developer mode, we recommand you clone this repository and install the required dependencies:
 
 ```shell
-git clone https://github.com/PINTO0309/yolov9mit.git
-cd yolov9mit
+git clone https://github.com/PINTO0309/YOLO.git
+cd YOLO
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
