@@ -1,4 +1,4 @@
-# This fork is an MIT version of YOLO, with some bug fixes and the addition of the V9-N (nano) and V9-E (extended) variants to the original. https://github.com/MultimediaTechLab/YOLO.
+# This fork is an MIT version of YOLO, with some bug fixes and the addition of the V9-N (nano) and V9-E (extended) variants to the original. This repository is already capable of achieving convergence speed and accuracy comparable to stable GPLv3. https://github.com/MultimediaTechLab/YOLO.
 
 ---
 
