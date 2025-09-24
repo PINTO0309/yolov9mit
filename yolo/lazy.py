@@ -66,7 +66,9 @@ def main(cfg: Config):
 
     callbacks, loggers, save_path = setup(cfg)
 
-    if cfg.task.task == "export":
+    task_name = getattr(cfg.task, "task", "")
+
+    if task_name == "export":
         exporter = ONNXExporter(cfg, save_path)
         exporter.run()
         return
@@ -85,15 +87,15 @@ def main(cfg: Config):
         default_root_dir=save_path,
     )
 
-    if cfg.task.task == "train":
+    if task_name.startswith("train"):
         _clear_dataset_cache_if_resuming(cfg)
         model = TrainModel(cfg)
         ckpt = getattr(cfg.task, "resume_ckpt", None)
         trainer.fit(model, ckpt_path=ckpt)
-    elif cfg.task.task == "validation":
+    elif task_name == "validation":
         model = ValidateModel(cfg)
         trainer.validate(model)
-    elif cfg.task.task == "inference":
+    elif task_name == "inference":
         model = InferenceModel(cfg)
         trainer.predict(model)
 

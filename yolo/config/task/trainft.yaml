@@ -1,0 +1,162 @@
+task: trainft
+
+defaults:
+  - validation: ../validation
+
+epoch: 60
+resume_ckpt: null
+
+data:
+  batch_size: 16
+  image_size: ${image_size}
+  cpu_num: ${cpu_num}
+  shuffle: True
+  pin_memory: True
+  class_biased_oversampling: false
+  class_biased_batch_formation: false
+  data_augment:
+    # Mosaic: 1.0
+    # MixUp: 1.0
+    # CopyPaste:
+    #   prob: 0.3
+    #   sample_num: 1
+    #   max_paste_objects: 5
+    #   scale_jitter: [0.8, 1.2]
+    RandomScale:
+      prob: 1.0
+      scale_range: [0.1, 1.9]
+      keep_aspect_ratio: true
+    Translation:
+      prob: 1.0
+      translate: 0.1
+      fill: [114, 114, 114]
+    # RandomCrop: 0.5
+    # RandomResizedCrop:
+    #   prob: 0.25
+    #   height: ${task.data.image_size[0]}
+    #   width: ${task.data.image_size[1]}
+    #   scale: [0.6, 1.0]
+    #   ratio: [0.75, 1.33]
+    #   min_visibility: 0.25
+    # HorizontalFlip: 0.5
+    # RandomBrightness:
+    #   prob: 0.01
+    #   factor_range: [0.8, 1.2]
+    # RandomContrast:
+    #   prob: 0.01
+    #   factor_range: [0.8, 1.2]
+    # RandomSaturation:
+    #   prob: 0.01
+    #   factor_range: [0.8, 1.2]
+
+    RemoveOutliers: 1e-8
+
+    # Albumentations-based: blur/noise/compression
+    Blur:
+      prob: 0.01
+      blur_limit: [3, 7]
+    MedianBlur:
+      prob: 0.01
+      blur_limit: [3, 7]
+    ToGray: 0.01
+    CLAHE:
+      prob: 0.01
+      clip_limit: 4.0
+      tile_grid_size: [8, 8]
+    # MotionBlur:
+    #   prob: 0.01
+    #   blur_limit: [5, 15]
+    # GaussianBlur:
+    #   prob: 0.01
+    #   blur_limit: [3, 7]
+    #   sigma_limit: [0.1, 2.0]
+    # GaussNoise:
+    #   prob: 0.01
+    #   mean: 0.0
+    #   var_limit: [10.0, 50.0]
+    # ImageCompression:
+    #   prob: 0.01
+    #   quality_range: [40, 90]
+    # ISONoise:
+    #   prob: 0.01
+    #   intensity: [0.05, 0.15]
+    #   color_shift: [0.01, 0.05]
+
+    # Albumentations-based: weather/lighting
+    # RandomRain:
+    #   prob: 0.01
+    #   slant_range: [-10, 10]
+    #   drop_length: [15, 30]
+    #   drop_width_range: [1, 2]
+    #   density: [0.002, 0.006]
+    #   blur_value: [3, 5]
+    #   brightness_coefficient: [0.9, 1.0]
+    # RandomFog:
+    #   prob: 0.01
+    #   fog_coef: [0.3, 0.6]
+    #   alpha_coef: [0.05, 0.1]
+    # RandomSunFlare:
+    #   prob: 0.01
+    #   src_radius_range: [50, 150]
+    #   src_intensity: [0.6, 1.0]
+
+    RandomHSV:
+      prob: 1.00
+      hue_gain: 0.015
+      saturation_gain: 0.7
+      value_gain: 0.4
+
+optimizer:
+  type: SGD
+  args:
+    lr: 0.002
+    weight_decay: 0.0002
+    momentum: 0.937
+    nesterov: true
+
+loss:
+  objective:
+    BCELoss: 0.5
+    BoxLoss: 7.5
+    DFLoss: 1.5
+  aux:
+    0.25
+  matcher:
+    iou: CIoU
+    topk: 10
+    factor:
+      iou: 6.0
+      cls: 0.5
+    candidate_policy: box  # and|(Default)box|center|or
+    reg_slack: 0.01
+    center_radius: 2.5
+
+scheduler:
+  type: LinearLR
+  warmup:
+    epochs: 1.0
+  args:
+    total_iters: ${task.epoch}
+    start_factor: 1
+    end_factor: 0.01
+
+ema:
+  enable: true
+  decay: 0.9998
+
+# Online knowledge distillation (teacher-student)
+kd:
+  enable: false
+  teacher_model: v9-e
+  teacher_weight: weights/v9-e.pt
+  apply_to: main  # main|aux|both
+  temperature:
+    init: 4.0
+    final: 1.5
+    schedule: cosine
+  weights:
+    cls: 1.0
+    dfl: 0.5
+    box: 0.25
+  teacher_fp16: true
+  freeze_teacher: true

@@ -233,6 +233,25 @@ device=cuda \
 use_wandb=False \
 use_tensorboard=True
 
+# To run a shorter fine-tuning schedule, use the dedicated configuration
+# at `yolo/config/task/trainft.yaml`
+# All CLI overrides available for `task=train` (e.g., `task.data.batch_size`,
+# `task.resume_ckpt`) also apply to `task=trainft`.
+VARIANT=n
+EPOCH=60
+BATCHSIZE=8
+uv run python yolo/lazy.py \
+task=trainft \
+name=v9-${VARIANT} \
+task.epoch=${EPOCH} \
+task.data.batch_size=${BATCHSIZE} \
+model=v9-${VARIANT} \
+weight="runs/train/v9-n/lightning_logs/version_1/checkpoints/best_n_0002_0.0065.pt" \
+dataset=wholebody34 \
+device=cuda \
+use_wandb=False \
+use_tensorboard=True
+
 # # DDP (Distributed data parallel training), Multi-GPU training
 # # Below is a sample for 8 GPUs
 # # n, t, s, c, e
