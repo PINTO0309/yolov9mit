@@ -219,6 +219,8 @@ use_tensorboard=True
 # Resume learning from where you left off
 # Please note that you must specify the Lightning checkpoint file (.ckpt)
 # and not the .pt file that contains only the EMA weights.
+# Unlike the official implementation, all parameters are restored from the .ckpt file,
+# so training resumes exactly where it left off.
 uv run python yolo/lazy.py \
 task=train \
 name=v9-${VARIANT} \
