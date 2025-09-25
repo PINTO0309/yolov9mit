@@ -314,7 +314,7 @@ The figure below shows the CPU and RAM status of my work PC. When I run 16 batch
 <img width="640" alt="image" src="https://github.com/user-attachments/assets/74d2e28a-a351-4491-aa4f-605056656b34" />
 
 ### Validation graph during training
-To speed up training and significantly reduce VRAM consumption during training, validation is limited to a simple, minimal evaluation per epoch. Therefore, validation results other than the final epoch do not properly evaluate the model's true performance, but they do confirm that training is progressing normally, that accuracy is not deteriorating significantly, and that overfitting is not occurring. The true performance of the model can only be confirmed by the evaluation results of rigorous validation performed at the final epoch.
+To speed up training and significantly reduce VRAM consumption during training, validation is limited to a simple, minimal evaluation per epoch. Therefore, validation results other than the final epoch do not properly evaluate the model's true performance, but they do confirm that training is progressing normally, that accuracy is not deteriorating significantly, and that overfitting is not occurring. The true performance of the model can only be confirmed by the evaluation results of rigorous validation performed at the final epoch. This means that the spot validation results do not perfectly match the true weight improvement as the learning progresses. It would be foolish to perform early stopping based solely on the validation status of each epoch.
 
 The final epoch performs fairly accurate validation, so it may take several minutes or more depending on the volume of your dataset.
 
