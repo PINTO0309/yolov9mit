@@ -44,6 +44,7 @@ dependencies = [
     "ydf==0.13.0",
     "tensorflow-hub==0.16.1",
     "torchmetrics==1.8.2",
+    "setuptools==80.9.0",
 ]
 
 [tool.setuptools.packages.find]
