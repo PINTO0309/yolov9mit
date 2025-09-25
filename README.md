@@ -39,6 +39,7 @@ cd YOLO
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 source .venv/bin/activate
+export PYTHONWARNINGS="ignore"
 ```
 
 ## Features
@@ -326,7 +327,7 @@ The final epoch performs fairly accurate validation, so it may take several minu
   |**max_bbox**|300|20,000|
   |**multi_label**|False|True|
   |**class_agnostic**|False|False|
-  
+
   <img width="900" alt="20250925085055" src="https://github.com/user-attachments/assets/281f08b0-846c-4e61-bf96-7117700c96cc" />
 
 ### print_map_per_class
