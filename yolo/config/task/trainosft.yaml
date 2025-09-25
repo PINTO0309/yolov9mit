@@ -1,9 +1,9 @@
-task: trainft
+task: trainosft
 
 defaults:
   - validation: ../validation
 
-epoch: 60
+epoch: 30
 resume_ckpt: null
 
 data:
@@ -119,8 +119,8 @@ data:
 optimizer:
   type: SGD
   args:
-    lr: 0.002
-    weight_decay: 0.0002
+    lr: 0.00075
+    weight_decay: 0.000075
     momentum: 0.937
     nesterov: true
 
@@ -144,15 +144,15 @@ loss:
 scheduler:
   type: LinearLR
   warmup:
-    epochs: 1.0
+    epochs: 3.0
   args:
     total_iters: ${task.epoch}
     start_factor: 1
-    end_factor: 0.01
+    end_factor: 0.05
 
 ema:
   enable: true
-  decay: 0.9998
+  decay: 0.9997
 
 # Online knowledge distillation (teacher-student)
 kd:

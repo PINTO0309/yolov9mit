@@ -1,4 +1,4 @@
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
@@ -137,13 +137,58 @@ class PadAndResize:
 class HorizontalFlip:
     """Randomly horizontally flips the image along with the bounding boxes."""
 
-    def __init__(self, prob=0.5):
+    def __init__(self, prob=0.5, class_swap_map: Optional[Union[Mapping[int, int], Sequence[Sequence[int]]]] = None):
         self.prob = prob
+        self.class_swap_map = self._normalize_mapping(class_swap_map)
+
+    @staticmethod
+    def _normalize_mapping(class_swap_map):
+        if class_swap_map is None:
+            return {}
+
+        if isinstance(class_swap_map, Mapping):
+            items = class_swap_map.items()
+        elif isinstance(class_swap_map, Sequence) and not isinstance(class_swap_map, (str, bytes)):
+            items = class_swap_map
+        else:
+            raise TypeError("class_swap_map must be a mapping or a sequence of (src, dst) pairs")
+
+        normalized = {}
+        for pair in items:
+            if isinstance(pair, Sequence) and not isinstance(pair, (str, bytes)):
+                if len(pair) != 2:
+                    raise ValueError("Each class swap entry must provide exactly two values")
+                src, dst = pair
+            else:
+                src, dst = pair
+
+            try:
+                src_id = int(src)
+                dst_id = int(dst)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Class swap map keys and values must be castable to integers") from exc
+            normalized[src_id] = dst_id
+
+        return normalized
 
     def __call__(self, image, boxes):
         if torch.rand(1) < self.prob:
             image = TF.hflip(image)
             boxes[:, [1, 3]] = 1 - boxes[:, [3, 1]]
+
+            if self.class_swap_map and boxes.numel():
+                class_column = boxes[:, 0]
+                original_dtype = class_column.dtype
+                original_ids = class_column.to(torch.int64)
+                swapped_ids = original_ids.clone()
+
+                for src, dst in self.class_swap_map.items():
+                    mask = original_ids == src
+                    if mask.any():
+                        swapped_ids[mask] = dst
+
+                boxes[:, 0] = swapped_ids.to(original_dtype)
+
         return image, boxes
 
 
