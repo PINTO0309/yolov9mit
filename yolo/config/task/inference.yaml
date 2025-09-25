@@ -8,7 +8,10 @@ data:
   max_samples: null
 nms:
   min_confidence: 0.15
-  min_iou: 0.4
+  min_iou: 0.7
+  pre_topk: 10000
   max_bbox: 10000
+  multi_label: True
+  class_agnostic: False
 save_predict: True
 render_labels: True

@@ -25,6 +25,9 @@ SUFFIX="0100_1x3x"
 
 OPSET=13 # default: 13, for onnxruntime-web: 11
 BATCHES=1
+MAX_OUTPUT_BOXES_PER_CLASS=100
+IOU_THRESHOLD=0.40
+SCORE_THRESHOLD=0.0001
 
 RESOLUTIONS=(
     # "128 160 420"
@@ -102,7 +105,7 @@ do
     --opset ${OPSET} \
     --op_name max_output_boxes_per_class_const \
     --output_variables max_output_boxes_per_class int64 [1] \
-    --attributes value int64 [20] \
+    --attributes value int64 [${MAX_OUTPUT_BOXES_PER_CLASS}] \
     --output_onnx_file_path 05_Constant_max_output_boxes_per_class.onnx
 
     sog4onnx \
@@ -110,7 +113,7 @@ do
     --opset ${OPSET} \
     --op_name iou_threshold_const \
     --output_variables iou_threshold float32 [1] \
-    --attributes value float32 [0.40] \
+    --attributes value float32 [${IOU_THRESHOLD}] \
     --output_onnx_file_path 06_Constant_iou_threshold.onnx
 
     sog4onnx \
@@ -118,7 +121,7 @@ do
     --opset ${OPSET} \
     --op_name score_threshold_const \
     --output_variables score_threshold float32 [1] \
-    --attributes value float32 [0.25] \
+    --attributes value float32 [${SCORE_THRESHOLD}] \
     --output_onnx_file_path 07_Constant_score_threshold.onnx
 
 
