@@ -22,20 +22,20 @@ data:
     #   sample_num: 1
     #   max_paste_objects: 5
     #   scale_jitter: [0.8, 1.2]
-    # HorizontalFlip:
-    #   prob: 0.5
-    #   class_swap_map:
-    #     9: 15 # right-front -> left-front
-    #     15: 9 # left-front -> right-front
-    #     10: 14 # right-side -> left-side
-    #     14: 10 # left-side -> right-side
-    #     11: 13 # right-back -> left-back
-    #     13: 11 # left-back -> right-back
-    #     27: 28 # hand_left -> hand_right
-    #     28: 27 # hand_right -> hand_left
+    HorizontalFlip:
+      prob: 0.5
+      class_swap_map:
+        9: 15 # right-front -> left-front
+        15: 9 # left-front -> right-front
+        10: 14 # right-side -> left-side
+        14: 10 # left-side -> right-side
+        11: 13 # right-back -> left-back
+        13: 11 # left-back -> right-back
+        27: 28 # hand_left -> hand_right
+        28: 27 # hand_right -> hand_left
     RandomScale:
       prob: 1.0
-      scale_range: [0.1, 1.9]
+      scale_range: [0.6, 1.9]
       keep_aspect_ratio: true
     Translation:
       prob: 1.0
