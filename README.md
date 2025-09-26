@@ -308,11 +308,27 @@ use_tensorboard=True
 
 ### ⚠️ **important points** ⚠️
 
+#### 1. About batch size
 Pay particular attention to the maximum number of CPU threads and the amount of RAM on the machine you are trying to train on. I'm talking RAM, not VRAM. The number of worker processes specified during training is `batch_size + 1`, but you must adjust `batch_size` so that it is less than the maximum number of CPU `threads - 1`. Also, the amount of RAM consumed increases in proportion to the number of enabled augmentations, so you need to pay attention to the amount of RAM installed on your PC. Checking only the amount of VRAM is not enough. If you need to run heavy augmentation that exceeds the RAM capacity, we recommend setting `batch_size` to a relatively small value.
 
 The figure below shows the CPU and RAM status of my work PC. When I run 16 batches with the maximum number of augmentations enabled, 17 threads are started, which not only consumes a lot of RAM, causing the learning process to silently abort after a few epochs without outputting any errors.
 
 <img width="640" alt="image" src="https://github.com/user-attachments/assets/74d2e28a-a351-4491-aa4f-605056656b34" />
+
+#### 2. If training does not start normally (silently aborts)
+Countermeasure for situations where resume is unstable and CUDA initialization error occurs https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+If the following `mp.set_start_method` is specified, there are some environments where the process will silently terminate before learning begins. Therefore, if you are in an environment where learning does not start normally, it may be a good idea to comment out the following line: `mp.set_start_method`.
+```python
+if __name__ == "__main__":
+    # Countermeasure for situations where resume is unstable and CUDA initialization error occurs
+    # https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+    # If the following `mp.set_start_method` is specified, there are some environments where
+    # the process will silently terminate before learning begins.
+    # Therefore, if you are in an environment where learning does not start normally,
+    # it may be a good idea to comment out the following line: `mp.set_start_method`.
+    # mp.set_start_method("spawn", force=True) <--- Here
+    main()
+  ```
 
 ### Validation graph during training
 To speed up training and significantly reduce VRAM consumption during training, validation is limited to a simple, minimal evaluation per epoch. Therefore, validation results other than the final epoch do not properly evaluate the model's true performance, but they do confirm that training is progressing normally, that accuracy is not deteriorating significantly, and that overfitting is not occurring. The true performance of the model can only be confirmed by the evaluation results of rigorous validation performed at the final epoch. This means that the spot validation results do not perfectly match the true weight improvement as the learning progresses. It would be foolish to perform early stopping based solely on the validation status of each epoch. First of all, you should not use an insufficient dataset that results in overfitting.
