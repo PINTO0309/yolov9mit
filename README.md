@@ -317,18 +317,21 @@ The figure below shows the CPU and RAM status of my work PC. When I run 16 batch
 
 #### 2. If training does not start normally (silently aborts)
 Countermeasure for situations where resume is unstable and CUDA initialization error occurs https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+
 If the following `mp.set_start_method` is specified, there are some environments where the process will silently terminate before learning begins. Therefore, if you are in an environment where learning does not start normally, it may be a good idea to comment out the following line: `mp.set_start_method`.
-```python
-if __name__ == "__main__":
-    # Countermeasure for situations where resume is unstable and CUDA initialization error occurs
-    # https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
-    # If the following `mp.set_start_method` is specified, there are some environments where
-    # the process will silently terminate before learning begins.
-    # Therefore, if you are in an environment where learning does not start normally,
-    # it may be a good idea to comment out the following line: `mp.set_start_method`.
-    # mp.set_start_method("spawn", force=True) <--- Here
-    main()
-  ```
+
+- `yolo/lazy.py`
+  ```python
+  if __name__ == "__main__":
+      # Countermeasure for situations where resume is unstable and CUDA initialization error occurs
+      # https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+      # If the following `mp.set_start_method` is specified, there are some environments where
+      # the process will silently terminate before learning begins.
+      # Therefore, if you are in an environment where learning does not start normally,
+      # it may be a good idea to comment out the following line: `mp.set_start_method`.
+      # mp.set_start_method("spawn", force=True) <--- Here
+      main()
+    ```
 
 ### Validation graph during training
 To speed up training and significantly reduce VRAM consumption during training, validation is limited to a simple, minimal evaluation per epoch. Therefore, validation results other than the final epoch do not properly evaluate the model's true performance, but they do confirm that training is progressing normally, that accuracy is not deteriorating significantly, and that overfitting is not occurring. The true performance of the model can only be confirmed by the evaluation results of rigorous validation performed at the final epoch. This means that the spot validation results do not perfectly match the true weight improvement as the learning progresses. It would be foolish to perform early stopping based solely on the validation status of each epoch. First of all, you should not use an insufficient dataset that results in overfitting.
