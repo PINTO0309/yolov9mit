@@ -103,5 +103,9 @@ def main(cfg: Config):
 if __name__ == "__main__":
     # Countermeasure for situations where resume is unstable and CUDA initialization error occurs
     # https://discuss.pytorch.org/t/dataloader-num-workers-1-cuda-initialization-error-3/159989
+    # If the following `mp.set_start_method` is specified, there are some environments where
+    # the process will silently terminate before learning begins.
+    # Therefore, if you are in an environment where learning does not start normally,
+    # it may be a good idea to comment out the following line: `mp.set_start_method`.
     mp.set_start_method("spawn", force=True)
     main()
