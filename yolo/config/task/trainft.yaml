@@ -22,6 +22,8 @@ data:
     #   sample_num: 1
     #   max_paste_objects: 5
     #   scale_jitter: [0.8, 1.2]
+    # VerticalFlip:
+    #   prob: 0.5
     # HorizontalFlip:
     #   prob: 0.5
     #   class_swap_map:
