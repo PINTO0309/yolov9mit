@@ -37,7 +37,7 @@ data:
         28: 27 # hand_right -> hand_left
     RandomScale:
       prob: 1.00
-      scale_range: [0.6, 1.9]
+      scale_range: [0.7, 1.9]
       keep_aspect_ratio: true
     Translation:
       prob: 0.80
