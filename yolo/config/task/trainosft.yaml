@@ -36,11 +36,11 @@ data:
         27: 28 # hand_left -> hand_right
         28: 27 # hand_right -> hand_left
     RandomScale:
-      prob: 1.0
+      prob: 1.00
       scale_range: [0.6, 1.9]
       keep_aspect_ratio: true
     Translation:
-      prob: 1.0
+      prob: 0.80
       translate: 0.1
       fill: [114, 114, 114]
     # RandomCrop: 0.5
@@ -113,7 +113,7 @@ data:
     #   src_intensity: [0.6, 1.0]
 
     RandomHSV:
-      prob: 0.90
+      prob: 0.75
       hue_gain: 0.015
       saturation_gain: 0.7
       value_gain: 0.4
