@@ -171,6 +171,7 @@ class ExportConfig:
     simplify: bool = True
     half: bool = False
     dynamic_batch: bool = False
+    dynamic_size: bool = False
     apply_sigmoid: bool = True
     include_metadata: bool = True
     output_path: Optional[str] = None
