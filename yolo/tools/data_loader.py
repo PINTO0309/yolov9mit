@@ -12,6 +12,7 @@ import random
 from rich.progress import track
 from torch import Tensor
 from torch.utils.data import BatchSampler, DataLoader, Dataset
+import torch.distributed as dist
 
 SIZE_THRESHOLDS = (32 * 32, 96 * 96)
 
@@ -725,6 +726,8 @@ def collate_fn(batch: List[Tuple[Tensor, Tensor]]) -> Tuple[int, Tensor, Tensor,
 
     return batch_size, batch_images, batch_targets, batch_reverse, batch_path
 
+def _is_ddp_active():
+    return dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
 
 def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: str = "train"):
     if task == "inference":
@@ -749,16 +752,31 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
             num_workers=data_cfg.cpu_num,
             pin_memory=data_cfg.pin_memory,
             collate_fn=collate_fn,
+            drop_last=True if is_training_task and _is_ddp_active() else False,
         )
 
-    return DataLoader(
-        dataset,
-        batch_size=data_cfg.batch_size,
-        num_workers=data_cfg.cpu_num,
-        pin_memory=data_cfg.pin_memory,
-        collate_fn=collate_fn,
-        shuffle=shuffle_data,
-    )
+    if is_training_task and _is_ddp_active():
+        sampler = torch.utils.data.DistributedSampler(
+            dataset, shuffle=shuffle_data
+        )
+        return DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=data_cfg.batch_size,
+            num_workers=data_cfg.cpu_num,
+            pin_memory=data_cfg.pin_memory,
+            collate_fn=collate_fn,
+            drop_last=True,
+        )
+    else:
+        return DataLoader(
+            dataset,
+            batch_size=data_cfg.batch_size,
+            num_workers=data_cfg.cpu_num,
+            pin_memory=data_cfg.pin_memory,
+            collate_fn=collate_fn,
+            shuffle=shuffle_data,
+        )
 
 
 class StreamDataLoader:
