@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import json
 from pathlib import Path
 from typing import Dict, List, Mapping, Sequence, Tuple
@@ -9,14 +12,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from yolo.config.config import Config, ExportConfig
 from yolo.model.yolo import create_model
-from yolo.utils.bounding_box_utils import generate_anchors
 from yolo.utils.logger import logger
 from yolo.model.module import Anchor2Vec
 
 
-EXPORT_SIGNATURE_KEY = "yolov9mit_export_version"
+EXPORT_SIGNATURE_KEY = "export_version"
 EXPORT_SIGNATURE_VALUE = "2"
-EXPORT_ANCHOR_LAYOUT_KEY = "yolov9mit_anchor_layout"
+EXPORT_ANCHOR_LAYOUT_KEY = "anchor_layout"
 EXPORT_ANCHOR_LAYOUT_VALUE = "bcn"
 
 
@@ -37,13 +39,7 @@ class EfficientONNXModule(torch.nn.Module):
 
         width, height = int(image_size[0]), int(image_size[1])
         strides = self._resolve_strides(model, anchor_cfg, width, height)
-        anchor_grid, scaler = generate_anchors([width, height], strides)
-
-        anchor_grid = anchor_grid.to(dtype=torch.float32).transpose(0, 1).unsqueeze(0).contiguous()
-        scaler = scaler.to(dtype=torch.float32).view(1, 1, -1)
-
-        self.register_buffer("anchor_grid", anchor_grid, persistent=False)
-        self.register_buffer("scaler", scaler, persistent=False)
+        self.strides: List[int] = strides
         self.reg_max = getattr(anchor_cfg, "reg_max", None)
 
         coeff = torch.tensor(
@@ -56,8 +52,6 @@ class EfficientONNXModule(torch.nn.Module):
             dtype=torch.float32,
         )
         self.register_buffer("dist_to_box", coeff, persistent=False)
-        box_bias = torch.cat([anchor_grid, torch.zeros_like(anchor_grid)], dim=1)
-        self.register_buffer("box_bias", box_bias, persistent=False)
 
     @staticmethod
     def _resolve_strides(model: torch.nn.Module, anchor_cfg, width: int, height: int) -> List[int]:
@@ -81,14 +75,26 @@ class EfficientONNXModule(torch.nn.Module):
         cls_chunks: List[torch.Tensor] = []
         dist_chunks: List[torch.Tensor] = []
         logit_chunks: List[torch.Tensor] = []
+        anchor_chunks: List[torch.Tensor] = []
+        scaler_chunks: List[torch.Tensor] = []
 
         reg_max = self.reg_max or 16
 
-        for head in predictions:
+        if len(predictions) != len(self.strides):
+            raise RuntimeError(
+                f"Stride count ({len(self.strides)}) does not match prediction heads ({len(predictions)})"
+            )
+
+        for idx, head in enumerate(predictions):
+            stride = self.strides[idx]
             cls_map, _, vec_map = head
             batch, channels, h, w = cls_map.shape
             hw = h * w
             cls_chunks.append(cls_map.reshape(batch, channels, hw))
+
+            anchor_grid, stride_tensor = self._build_anchor_grid(cls_map, stride)
+            anchor_chunks.append(anchor_grid)
+            scaler_chunks.append(stride_tensor)
 
             if vec_map.ndim == 5:
                 reg_bins = vec_map.shape[2]
@@ -110,10 +116,15 @@ class EfficientONNXModule(torch.nn.Module):
         if self.apply_sigmoid:
             cls_tensor = cls_tensor.sigmoid()
 
-        dist = dist_tensor * self.scaler.to(dist_tensor.dtype)
+        anchor_grid = torch.cat(anchor_chunks, dim=2).to(dist_tensor.dtype)
+        scaler = torch.cat(scaler_chunks, dim=2).to(dist_tensor.dtype)
+
+        dist = dist_tensor * scaler
         coeff = self.dist_to_box.to(dist.dtype).unsqueeze(0)
         combo = torch.matmul(coeff, dist)
-        box_tensor = combo + self.box_bias.to(dist.dtype)
+        zeros = torch.zeros_like(anchor_grid)
+        box_bias = torch.cat([anchor_grid, zeros], dim=1)
+        box_tensor = combo + box_bias
 
         fused = torch.cat([box_tensor, cls_tensor], dim=1)
         return fused
@@ -134,6 +145,36 @@ class EfficientONNXModule(torch.nn.Module):
         bins = torch.arange(reg_max, device=logits.device, dtype=logits.dtype).view(1, 1, reg_max, 1)
         dist = torch.sum(probs * bins, dim=2)
         return dist
+
+    def _build_anchor_grid(self, feature_map: torch.Tensor, stride: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = feature_map.device
+        h = feature_map.shape[-2]
+        w = feature_map.shape[-1]
+
+        # grid centers: (idx + 0.5) * stride
+        y_range = torch.arange(h, device=device, dtype=torch.float32)
+        x_range = torch.arange(w, device=device, dtype=torch.float32)
+        y_centers = (y_range + 0.5) * float(stride)
+        x_centers = (x_range + 0.5) * float(stride)
+        if torch.__version__ >= "2.3.0":
+            grid_y, grid_x = torch.meshgrid(y_centers, x_centers, indexing="ij")
+        else:
+            grid_y, grid_x = torch.meshgrid(y_centers, x_centers)
+
+        grid = torch.stack((grid_x, grid_y), dim=0).reshape(1, 2, -1)
+        stride_tensor = torch.empty_like(grid[:, :1, :], dtype=torch.float32)
+        stride_tensor.fill_(float(stride))
+
+        return grid, stride_tensor
+
+    def estimate_anchor_count(self, image_size: Sequence[int]) -> int:
+        width, height = map(int, image_size)
+        total = 0
+        for stride in self.strides:
+            if stride <= 0:
+                continue
+            total += (width // stride) * (height // stride)
+        return total
 
 
 class ONNXExporter:
@@ -159,7 +200,9 @@ class ONNXExporter:
 
         self._enable_export_mode(model)
 
-        width, height = self._resolve_image_size()
+        width, height = 640, 640
+        if not self.task_cfg.dynamic_size:
+            width, height = self._resolve_image_size()
 
         wrapper = EfficientONNXModule(
             model,
@@ -171,23 +214,54 @@ class ONNXExporter:
         dtype = torch.float16 if self.task_cfg.half else torch.float32
         wrapper = wrapper.to(dtype=dtype)
 
-        dummy = torch.zeros(
-            (self.task_cfg.batch_size, 3, height, width),
-            dtype=dtype,
-        )
+        dummy = torch.zeros((self.task_cfg.batch_size, 3, height, width), dtype=dtype)
 
         dynamic_axes = None
-        if self.task_cfg.dynamic_batch:
-            dynamic_axes = {"images": {0: "batch"}, "output": {0: "batch"}}
+        input_names = []
+        input_shapes = []
+        output_names = []
+        output_shapes = []
+        batch = ""
+        features = str(self.cfg.dataset.class_num + 4)
+        anchors = ""
+
+        if self.task_cfg.dynamic_batch and not self.task_cfg.dynamic_size:
+            batch = "N"
+            anchors = str(wrapper.estimate_anchor_count([width, height]))
+            dynamic_axes = {"images": {0: batch}, "output": {0: batch, 1: features}}
+            input_names = ["images"]
+            input_shapes = [[batch, 3, height, width]]
+            output_names = ["output"]
+            output_shapes = [[batch, features, anchors]]
+
+        elif not self.task_cfg.dynamic_batch and self.task_cfg.dynamic_size:
+            batch = str(self.task_cfg.batch_size)
+            anchors = "BOXES"
+            dynamic_axes = {"images": {2: "H", 3: "W"}, "output": {1: features, 2: anchors}}
+            input_names = ["images"]
+            input_shapes = [[batch, 3, "H", "W"]]
+            output_names = ["output"]
+            output_shapes = [[batch, features, anchors]]
+
+        elif self.task_cfg.dynamic_batch and self.task_cfg.dynamic_size:
+            batch = "N"
+            anchors = "BOXES"
+            dynamic_axes = {"images": {0: batch, 2: "H", 3: "W"}, "output": {0: batch, 1: features, 2: anchors}}
+            input_names = ["images"]
+            input_shapes = [[batch, 3, "H", "W"]]
+            output_names = ["output"]
+            output_shapes = [[batch, features, anchors]]
+
+        else:
+            batch = str(self.task_cfg.batch_size)
+            anchors = str(wrapper.estimate_anchor_count([width, height]))
 
         with torch.inference_mode():
             torch.onnx.export(
                 wrapper,
                 dummy,
                 str(export_path),
-                export_params=True,
                 opset_version=self.task_cfg.opset,
-                do_constant_folding=True,
                 input_names=["images"],
                 output_names=["output"],
                 dynamic_axes=dynamic_axes,
@@ -195,9 +269,21 @@ class ONNXExporter:
 
         self._post_process(export_path)
 
-        anchors = wrapper.anchor_grid.shape[0]
-        features = self.cfg.dataset.class_num + 4
-        logger.info(f"✅ ONNX export complete (output dims: batch x {features} x {anchors})")
+        if dynamic_axes:
+            from sio4onnx import io_change
+            io_changed_graph = \
+                io_change(
+                    input_onnx_file_path=export_path,
+                    output_onnx_file_path=export_path,
+                    input_names=input_names,
+                    input_shapes=input_shapes,
+                    output_names=output_names,
+                    output_shapes=output_shapes,
+                    non_verbose=True,
+                )
+
+
+        logger.info(f"✅ ONNX export complete (output dims: {batch} x {features} x {anchors})")
         return export_path
 
     @staticmethod
@@ -259,10 +345,17 @@ class ONNXExporter:
             if not path.is_absolute():
                 path = self.save_dir / path
         else:
-            width, height = self._resolve_image_size()
-            batch_size = "N" if self.task_cfg.dynamic_batch else str(self.task_cfg.batch_size)
+            if self.task_cfg.dynamic_size:
+                width_label = "W"
+                height_label = "H"
+            else:
+                width, height = self._resolve_image_size()
+                width_label = str(width)
+                height_label = str(height)
+
+            batch_label = "N" if self.task_cfg.dynamic_batch else str(self.task_cfg.batch_size)
             channel = 3
-            suffix = f"_{batch_size}x{channel}x{height}x{width}.onnx"
+            suffix = f"_{batch_label}x{channel}x{height_label}x{width_label}.onnx"
             if weight_hint:
                 base = weight_hint.with_suffix(".onnx")
                 path = base.with_name(base.stem + suffix)

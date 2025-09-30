@@ -485,27 +485,27 @@ use_wandb=False
 ### Export
 
 Use the Hydra-driven CLI to run the `export` task and produce a compact ONNX graph. The exporter emits a
-single `[batch, 4 + num_classes, anchors]` tensor, keeps detection heads minimal, and derives an informative
-filename (e.g. `best_n_0470_0.2904_1x3x480x640.onnx`). Example:
+single `[batches, 4 + num_classes, boxes]` tensor, keeps detection heads minimal, and derives an informative
+filename (e.g. `best_e_0060_0.6585_1x3x480x640.onnx`). Example:
 
 ```bash
 uv run python yolo/lazy.py \
 task=export \
 name=v9-demo \
-model=v9-n \
+model=v9-e \
 dataset=wholebody34 \
-weight="runs/train/v9-n/lightning_logs/version_3/checkpoints/best_n_0470_0.2904.pt" \
-task.batch_size=1 \
+weight="runs/trainft/v9-e/lightning_logs/version_ft0/checkpoints/best_e_0060_0.6585.pt" \
 task.dynamic_batch=False \
+task.dynamic_size=False \
 task.image_size=480x640 \
+task.batch_size=1 \
 task.opset=13 \
-task.simplify=True \
 task.half=false \
 task.apply_sigmoid=True \
 task.include_metadata=True
 ```
 
-- `output: [batch, [cx,cy,w,h,class_scores], anchors]`
+- `output: [batches, [cx,cy,w,h,class_scores], boxes]`
     <img width="1307" height="756" alt="image" src="https://github.com/user-attachments/assets/0fe37232-d327-4516-9467-23ab411c1018" />
 
 
