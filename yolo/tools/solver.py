@@ -112,14 +112,29 @@ class ValidateModel(BaseModel):
             if filtered_pairs:
                 filtered_preds, filtered_tgts = zip(*filtered_pairs)
                 mAP = self.metric(list(filtered_preds), list(filtered_tgts))
+                if getattr(self.trainer, "is_global_zero", True):
+                    logger.info(
+                        ":straight_ruler: Updated detection metric with %s non-empty sample(s)",
+                        len(filtered_pairs),
+                    )
             else:
+                # Keep metric state consistent across DDP ranks by performing a no-op update.
+                self.metric([], [])
                 mAP = None
+                if getattr(self.trainer, "is_global_zero", True):
+                    logger.info(
+                        ":straight_ruler: Skipped detection metric update for empty predictions/targets"
+                    )
         else:
             mAP = self.metric(pred_list, tgt_list)
         return predicts, mAP
 
     def on_validation_epoch_end(self):
+        if getattr(self.trainer, "is_global_zero", True):
+            logger.info(":stopwatch: Starting distributed mAP compute for epoch %s", int(self.current_epoch))
         epoch_metrics = self.metric.compute()
+        if getattr(self.trainer, "is_global_zero", True):
+            logger.info(":checkered_flag: Completed distributed mAP compute for epoch %s", int(self.current_epoch))
         # Pretty summary printing (skip during sanity check)
         if not getattr(self.trainer, "sanity_checking", False):
             try:
