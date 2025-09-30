@@ -755,29 +755,20 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
             drop_last=True if is_training_task and _is_ddp_active() else False,
         )
 
-    if is_training_task and _is_ddp_active():
-        sampler = torch.utils.data.DistributedSampler(
-            dataset,
-            shuffle=shuffle_data,
-            drop_last=True,
-        )
-        return DataLoader(
-            dataset,
-            sampler=sampler,
-            batch_size=data_cfg.batch_size,
-            num_workers=data_cfg.cpu_num,
-            pin_memory=data_cfg.pin_memory,
-            collate_fn=collate_fn,
-        )
-    else:
-        return DataLoader(
-            dataset,
-            batch_size=data_cfg.batch_size,
-            num_workers=data_cfg.cpu_num,
-            pin_memory=data_cfg.pin_memory,
-            collate_fn=collate_fn,
-            shuffle=shuffle_data,
-        )
+    sampler: Optional[torch.utils.data.DistributedSampler] = None
+    if is_training_task and not use_class_biased_batch and _is_ddp_active():
+        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle_data)
+        shuffle_data = False
+
+    return DataLoader(
+        dataset,
+        sampler=sampler,
+        batch_size=data_cfg.batch_size,
+        num_workers=data_cfg.cpu_num,
+        pin_memory=data_cfg.pin_memory,
+        collate_fn=collate_fn,
+        shuffle=shuffle_data,
+    )
 
 
 class StreamDataLoader:
