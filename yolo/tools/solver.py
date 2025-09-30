@@ -113,7 +113,7 @@ class ValidateModel(BaseModel):
                 filtered_preds, filtered_tgts = zip(*filtered_pairs)
                 mAP = self.metric(list(filtered_preds), list(filtered_tgts))
             else:
-                mAP = self.metric.compute()
+                mAP = None
         else:
             mAP = self.metric(pred_list, tgt_list)
         return predicts, mAP
