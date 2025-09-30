@@ -508,11 +508,12 @@ task.include_metadata=True
 - `output: [batches, [cx,cy,w,h,class_scores], boxes]`
     <img width="1307" height="756" alt="image" src="https://github.com/user-attachments/assets/0fe37232-d327-4516-9467-23ab411c1018" />
 
-
 Key overrides (all optional):
 - `task.batch_size`: dummy input batch size (default 1).
 - `task.dynamic_batch`: `true` marks batch as symbolic `N` and names the file accordingly.
+- `task.dynamic_size`: `true` marks Height and Width as symbolic `H`, `W` and names the file accordingly.
 - `task.image_size`: input resolution. Accepts `'HxW'`.
+- `task.batch_size`: input batch size.
 - `task.opset`: ONNX opset version (default 13).
 - `task.simplify`: run `onnxsim` for graph simplification.
 - `task.half`: export weights/activations in FP16.
@@ -520,9 +521,6 @@ Key overrides (all optional):
 - `task.include_metadata`: embed class names in ONNX metadata.
 - `task.output_path`: explicit destination; omit to auto-name beside the weight file.
 - `task.name`: experiment/run folder label (standard Hydra behaviour).
-
-Other global defaults (`device`, `out_path`, etc.) still apply via `config/general.yaml` and can be
-overridden the same way when invoking `yolo/lazy.py`.
 
 ## Generate and merge post-processing with NMS
 
