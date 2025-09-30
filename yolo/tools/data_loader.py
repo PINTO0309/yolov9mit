@@ -757,7 +757,9 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
 
     if is_training_task and _is_ddp_active():
         sampler = torch.utils.data.DistributedSampler(
-            dataset, shuffle=shuffle_data
+            dataset,
+            shuffle=shuffle_data,
+            drop_last=True,
         )
         return DataLoader(
             dataset,
@@ -766,7 +768,6 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
             num_workers=data_cfg.cpu_num,
             pin_memory=data_cfg.pin_memory,
             collate_fn=collate_fn,
-            drop_last=True,
         )
     else:
         return DataLoader(
