@@ -757,7 +757,7 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
 
     sampler: Optional[torch.utils.data.DistributedSampler] = None
     if is_training_task and not use_class_biased_batch and _is_ddp_active():
-        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle_data)
+        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle_data, drop_last=True)
         shuffle_data = False
 
     return DataLoader(
