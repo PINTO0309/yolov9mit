@@ -5,6 +5,7 @@ opset: 13
 simplify: true
 half: false
 dynamic_batch: false
+dynamic_size: false
 apply_sigmoid: true
 include_metadata: true
 image_size:
