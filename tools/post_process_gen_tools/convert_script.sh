@@ -12,7 +12,7 @@
 # && pip install tf-keras~=2.16 \
 # && pip install flatbuffers>=23.5.26
 
-TYPE=e
+TYPE=n
 # RELU= or RELU=-relu
 RELU=
 RELUS=$(echo ${RELU} | sed 's/-/_/g')
@@ -25,9 +25,9 @@ SUFFIX="0100_1x3x"
 
 OPSET=13 # default: 13, for onnxruntime-web: 11
 BATCHES=1
-MAX_OUTPUT_BOXES_PER_CLASS=100
+MAX_OUTPUT_BOXES_PER_CLASS=20
 IOU_THRESHOLD=0.40
-SCORE_THRESHOLD=0.0001
+SCORE_THRESHOLD=0.25
 
 RESOLUTIONS=(
     # "128 160 420"
@@ -55,7 +55,7 @@ RESOLUTIONS=(
     # "384 960 7560"
     # "416 416 3549"
     # "480 1280 12600"
-    "480 640 6300"
+    "640 640 8400"
     # "480 800 7875"
     # "480 960 9450"
     # "512 512 5376"
