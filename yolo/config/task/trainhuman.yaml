@@ -24,8 +24,8 @@ data:
     #   scale_jitter: [0.8, 1.2]
     # VerticalFlip:
     #   prob: 0.5
-    # HorizontalFlip:
-    #   prob: 0.5
+    HorizontalFlip:
+      prob: 0.5
     #   class_swap_map:
     #     9: 15 # right-front -> left-front
     #     15: 9 # left-front -> right-front
