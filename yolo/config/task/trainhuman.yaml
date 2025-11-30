@@ -9,7 +9,7 @@ resume_ckpt: null
 data:
   batch_size: 16
   image_size: ${image_size}
-  cpu_num: 8
+  cpu_num: 16
   shuffle: True
   pin_memory: True
   class_biased_oversampling: false
