@@ -21,9 +21,27 @@ from yolo.utils.model_utils import PostProcess, SaveBestWeights, create_optimize
 from yolo.utils.deploy_utils import FastModelLoader
 
 
+def _resolve_image_size(cfg: Config):
+    """
+    Prefer the task's data.image_size when available; fall back to the root image_size.
+    Returns a plain list or None when no size is configured.
+    """
+    data_cfg = getattr(getattr(cfg, "task", None), "data", None)
+    size = getattr(data_cfg, "image_size", None) if data_cfg is not None else None
+    if size is None:
+        size = getattr(cfg, "image_size", None)
+    if size is None:
+        return None
+    try:
+        return list(size)
+    except TypeError:
+        return size
+
+
 class BaseModel(LightningModule):
     def __init__(self, cfg: Config):
         super().__init__()
+        self.cfg = cfg
         self.model = create_model(cfg.model, class_num=cfg.dataset.class_num, weight_path=cfg.weight)
 
     def forward(self, x):
@@ -33,7 +51,7 @@ class BaseModel(LightningModule):
 class ValidateModel(BaseModel):
     def __init__(self, cfg: Config):
         super().__init__(cfg)
-        self.cfg = cfg
+        self._config_image_size = _resolve_image_size(cfg)
         if self.cfg.task.task == "validation":
             self.validation_cfg = self.cfg.task
         else:
@@ -56,7 +74,7 @@ class ValidateModel(BaseModel):
             self.cfg.model.name,
             model=self.model,
             anchor_cfg=self.cfg.model.anchor,
-            image_size=self.cfg.image_size,
+            image_size=self._config_image_size,
             device=self.device,
             class_num=self.cfg.dataset.class_num,
         )
@@ -656,11 +674,13 @@ class TrainModel(ValidateModel):
         self.trainer.optimizers[0].next_epoch(
             ceil(len(self.train_loader) / self.trainer.world_size), self.current_epoch
         )
-        self.vec2box.update(self.cfg.image_size)
+        self.vec2box.update(self._config_image_size)
 
     def training_step(self, batch, batch_idx):
         lr_dict = self.trainer.optimizers[0].next_batch()
         batch_size, images, targets, *_ = batch
+        _, _, H, W = images.shape
+        self.vec2box.update([W, H])
         predicts = self(images)
         aux_predicts = self.vec2box(predicts["AUX"])
         main_predicts = self.vec2box(predicts["Main"])
@@ -803,7 +823,7 @@ class TrainModel(ValidateModel):
 class InferenceModel(BaseModel):
     def __init__(self, cfg: Config):
         super().__init__(cfg)
-        self.cfg = cfg
+        self._config_image_size = _resolve_image_size(cfg)
         # Swap to fast inference model if requested (ONNX/TRT/deploy)
         compiler = getattr(cfg.task, "fast_inference", None)
         if compiler:
@@ -820,7 +840,7 @@ class InferenceModel(BaseModel):
             self.cfg.model.name,
             model=self.model,
             anchor_cfg=self.cfg.model.anchor,
-            image_size=self.cfg.image_size,
+            image_size=self._config_image_size,
             device=self.device,
             class_num=self.cfg.dataset.class_num,
         )
