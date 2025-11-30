@@ -1,0 +1,8 @@
+path: data/human
+train: train
+validation: val
+
+class_num: 1
+class_list: ['body']
+
+auto_download:
