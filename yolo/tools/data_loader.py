@@ -749,6 +749,7 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
             num_workers=data_cfg.cpu_num,
             pin_memory=data_cfg.pin_memory,
             collate_fn=collate_fn,
+            persistent_workers=bool(data_cfg.cpu_num),
         )
 
     return DataLoader(
@@ -758,6 +759,7 @@ def create_dataloader(data_cfg: DataConfig, dataset_cfg: DatasetConfig, task: st
         pin_memory=data_cfg.pin_memory,
         collate_fn=collate_fn,
         shuffle=shuffle_data,
+        persistent_workers=bool(data_cfg.cpu_num),
     )
 
 
