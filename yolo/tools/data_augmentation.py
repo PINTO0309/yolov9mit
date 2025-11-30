@@ -7,6 +7,17 @@ from torchvision.transforms import functional as TF
 import inspect
 import cv2
 
+
+def _cv2_resize_rgb(image: Image.Image, size: Tuple[int, int], interpolation=cv2.INTER_LINEAR) -> Image.Image:
+    """
+    Resize a PIL RGB image using OpenCV interpolation, returning a PIL RGB image.
+    """
+    arr = np.asarray(image)
+    if arr.ndim == 2:  # grayscale fallback
+        arr = np.stack([arr] * 3, axis=-1)
+    resized = cv2.resize(arr, size, interpolation=interpolation)
+    return Image.fromarray(resized)
+
 class AugmentationComposer:
     """Composes several transforms together."""
 
@@ -105,9 +116,13 @@ class PadAndResize:
         pad_left = int(round(dw - 0.1))
         pad_top = int(round(dh - 0.1))
 
-        resized_image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        padded_image = Image.new("RGB", (target_w, target_h), self.pad_color)
-        padded_image.paste(resized_image, (pad_left, pad_top))
+        arr = np.asarray(image)
+        if arr.ndim == 2:  # grayscale -> 3ch
+            arr = np.stack([arr] * 3, axis=-1)
+        resized_arr = cv2.resize(arr, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        padded_arr = np.full((target_h, target_w, 3), self.pad_color, dtype=resized_arr.dtype)
+        padded_arr[pad_top : pad_top + new_h, pad_left : pad_left + new_w] = resized_arr
+        padded_image = Image.fromarray(padded_arr)
 
         if boxes is None:
             boxes_tensor = torch.zeros(0, 5, dtype=torch.float32)
@@ -290,7 +305,10 @@ class Mosaic:
             all_labels.append(adjusted_boxes)
 
         all_labels = torch.cat(all_labels, dim=0)
-        mosaic_image = mosaic_image.resize((img_sz, img_sz))
+        # Resize mosaic using OpenCV for consistency
+        mosaic_np = np.asarray(mosaic_image)
+        mosaic_np = cv2.resize(mosaic_np, (img_sz, img_sz), interpolation=cv2.INTER_LINEAR)
+        mosaic_image = Image.fromarray(mosaic_np)
         return mosaic_image, all_labels
 
 
@@ -400,7 +418,11 @@ class CopyPaste:
                     factor = max(0.1, factor)
                     new_w = max(1, int(round(crop_w * factor)))
                     new_h = max(1, int(round(crop_h * factor)))
-                    crop = crop.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                    crop_np = np.asarray(crop)
+                    if crop_np.ndim == 2:
+                        crop_np = np.stack([crop_np] * 3, axis=-1)
+                    crop_np = cv2.resize(crop_np, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                    crop = Image.fromarray(crop_np)
                     crop_w, crop_h = crop.size
 
                 if crop_w >= base_w or crop_h >= base_h:
@@ -604,7 +626,26 @@ class RandomScale:
         if new_width == width and new_height == height:
             return image, boxes
 
-        image = image.resize((new_width, new_height), self.resample)
+        # OpenCV resize for consistency
+        interpolation = cv2.INTER_LINEAR
+        if self.resample == Image.Resampling.NEAREST:
+            interpolation = cv2.INTER_NEAREST
+        elif self.resample == Image.Resampling.BILINEAR:
+            interpolation = cv2.INTER_LINEAR
+        elif self.resample == Image.Resampling.BICUBIC:
+            interpolation = cv2.INTER_CUBIC
+        elif self.resample == Image.Resampling.BOX:
+            interpolation = cv2.INTER_AREA
+        elif self.resample == Image.Resampling.HAMMING:
+            interpolation = cv2.INTER_LINEAR
+        elif self.resample == Image.Resampling.LANCZOS:
+            interpolation = cv2.INTER_LANCZOS4
+
+        arr = np.asarray(image)
+        if arr.ndim == 2:
+            arr = np.stack([arr] * 3, axis=-1)
+        arr = cv2.resize(arr, (new_width, new_height), interpolation=interpolation)
+        image = Image.fromarray(arr)
 
         if boxes.numel() == 0:
             return image, boxes
