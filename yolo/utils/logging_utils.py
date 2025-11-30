@@ -13,7 +13,9 @@ Example:
 
 import logging
 import os
+import shutil
 from collections import deque
+from contextlib import suppress
 from logging import FileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -41,6 +43,7 @@ from yolo.model.yolo import YOLO
 from yolo.utils.logger import logger
 from yolo.utils.model_utils import EMA, SaveBestWeights
 from yolo.utils.solver_utils import make_ap_table
+from yolo.tools.drawer import draw_bboxes
 
 
 # TODO: should be moved to correct position
@@ -253,6 +256,108 @@ class ImageLogger(Callback):
                 logger.log_image("Prediction", images, step=step, boxes=[log_bbox(pred_boxes)])
 
 
+class ValidationImageSaver(Callback):
+    """
+    Save a fixed number of validation images with predicted boxes each epoch and
+    keep only the most recent epochs to limit disk usage.
+    """
+
+    def __init__(self, *, max_images: int = 10, keep_epochs: int = 10):
+        super().__init__()
+        self.max_images = max_images
+        self.keep_epochs = keep_epochs
+        self._buffer: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._version_dir: Optional[Path] = None
+
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+        if self._version_dir is None:
+            self._version_dir = self._resolve_version_dir(trainer)
+
+    @rank_zero_only
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._buffer.clear()
+
+    @rank_zero_only
+    def on_validation_batch_end(
+        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx: int = 0
+    ) -> None:
+        if trainer.sanity_checking or len(self._buffer) >= self.max_images:
+            return
+        try:
+            predicts, _ = outputs
+        except Exception:
+            return
+        if predicts is None:
+            return
+        batch_size, images, targets, rev_tensor, img_paths = batch
+        # Normalize predict container to an iterable per-sample
+        predict_list = list(predicts) if isinstance(predicts, (list, tuple)) else [predicts]
+        for img, pred in zip(images, predict_list):
+            if len(self._buffer) >= self.max_images:
+                break
+            if not isinstance(pred, torch.Tensor):
+                continue
+            self._buffer.append((img.detach().cpu(), pred.detach().cpu()))
+
+    @rank_zero_only
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        if not self._buffer:
+            return
+        version_dir = self._version_dir or self._resolve_version_dir(trainer)
+        epoch_dir = version_dir / f"{int(trainer.current_epoch):04d}"
+        epoch_dir.mkdir(parents=True, exist_ok=True)
+        idx2label = getattr(getattr(pl_module.cfg, "dataset", None), "class_list", None)
+
+        for idx, (img, pred) in enumerate(self._buffer[: self.max_images]):
+            try:
+                drawn = draw_bboxes(img, pred, idx2label=idx2label, fill=False, draw_labels=True)
+                drawn.save(epoch_dir / f"val_{idx:02d}.png")
+            except Exception as exc:
+                logger.warning(f":warning: Failed to save validation image {idx}: {exc}")
+
+        self._prune_old_epochs(version_dir)
+
+    def _resolve_version_dir(self, trainer: Trainer) -> Path:
+        def _from_logger(lg) -> Optional[Path]:
+            log_dir = getattr(lg, "log_dir", None)
+            if log_dir:
+                return Path(log_dir)
+            save_dir = getattr(lg, "save_dir", None)
+            version = getattr(lg, "version", None)
+            name = getattr(lg, "name", None) or "lightning_logs"
+            if save_dir is not None and version is not None:
+                return Path(save_dir) / name / f"version_{version}"
+            return None
+
+        loggers = []
+        if hasattr(trainer, "loggers") and trainer.loggers:
+            loggers.extend(trainer.loggers if isinstance(trainer.loggers, (list, tuple)) else [trainer.loggers])
+        if trainer.logger and trainer.logger not in loggers:
+            loggers.append(trainer.logger)
+
+        for lg in loggers:
+            path = _from_logger(lg)
+            if path is not None:
+                return path
+
+        version = getattr(getattr(trainer, "logger", None), "version", 0)
+        fallback = Path(trainer.default_root_dir) / "lightning_logs"
+        if version is not None:
+            fallback = fallback / f"version_{version}"
+        return fallback
+
+    def _prune_old_epochs(self, version_dir: Path) -> None:
+        try:
+            epoch_dirs = [p for p in version_dir.iterdir() if p.is_dir() and p.name.isdigit() and len(p.name) == 4]
+        except FileNotFoundError:
+            return
+        keep = set(sorted(epoch_dirs, key=lambda p: int(p.name))[-self.keep_epochs :])
+        for p in epoch_dirs:
+            if p not in keep:
+                with suppress(Exception):
+                    shutil.rmtree(p)
+
+
 def setup_logger(logger_name, quite=False):
     class EmojiFormatter(logging.Formatter):
         def format(self, record, emoji=":high_voltage:"):
@@ -307,6 +412,7 @@ def setup(cfg: Config):
     progress.append(YOLORichProgressBar())
     progress.append(YOLORichModelSummary())
     progress.append(ImageLogger())
+    progress.append(ValidationImageSaver())
 
     is_rank_zero = os.getenv("RANK", "0") == "0"
     if cfg.use_tensorboard and is_rank_zero:
