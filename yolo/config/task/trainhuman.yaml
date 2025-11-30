@@ -12,6 +12,8 @@ data:
   cpu_num: 16
   shuffle: True
   pin_memory: True
+  # True: letterbox (PadAndResize). False: direct resize to image_size without padding.
+  letterbox: False
   class_biased_oversampling: false
   class_biased_batch_formation: false
   data_augment:

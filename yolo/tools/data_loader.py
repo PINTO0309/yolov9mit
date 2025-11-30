@@ -81,7 +81,12 @@ class YoloDataset(Dataset):
             # Fallback: pass through directly
             else:
                 transforms.append(cls(params))
-        self.transform = AugmentationComposer(transforms, self.image_size, self.base_size)
+        self.transform = AugmentationComposer(
+            transforms,
+            self.image_size,
+            self.base_size,
+            letterbox=bool(getattr(data_cfg, "letterbox", True)),
+        )
         self.transform.get_more_data = self.get_more_data
         dataset_path = Path(dataset_cfg.path)
         raw_data = self.load_data(dataset_path, phase_name)
@@ -781,7 +786,11 @@ class StreamDataLoader:
         self._returned_samples = 0
         self.is_stream = isinstance(self.source, int) or str(self.source).lower().startswith("rtmp://")
 
-        self.transform = AugmentationComposer([], data_cfg.image_size)
+        self.transform = AugmentationComposer(
+            [],
+            data_cfg.image_size,
+            letterbox=bool(getattr(data_cfg, "letterbox", True)),
+        )
         self.stop_event = Event()
         self._frame_index = 0
 

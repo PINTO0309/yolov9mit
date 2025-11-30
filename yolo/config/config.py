@@ -63,6 +63,7 @@ class DataConfig:
     max_samples: Optional[int] = None
     class_biased_oversampling: Optional[bool] = False
     class_biased_batch_formation: Optional[bool] = False
+    letterbox: Optional[bool] = True
 
 
 @dataclass

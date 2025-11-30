@@ -21,10 +21,10 @@ def _cv2_resize_rgb(image: Image.Image, size: Tuple[int, int], interpolation=cv2
 class AugmentationComposer:
     """Composes several transforms together."""
 
-    def __init__(self, transforms, image_size: int = [640, 640], base_size: int = 640):
+    def __init__(self, transforms, image_size: int = [640, 640], base_size: int = 640, *, letterbox: bool = True):
         self.transforms = transforms
         # TODO: handle List of image_size [640, 640]
-        self.pad_resize = PadAndResize(image_size)
+        self.pad_resize = PadAndResize(image_size) if letterbox else ResizeOnly(image_size)
         self.base_size = base_size
 
         for transform in self.transforms:
@@ -147,6 +147,69 @@ class PadAndResize:
         }
 
         return padded_image, boxes_tensor, transform_info
+
+
+class ResizeOnly:
+    """Resize directly to target size without padding (aspect ratio not preserved)."""
+
+    def __init__(self, image_size, interpolation=cv2.INTER_LINEAR):
+        self.target_width, self.target_height = image_size  # (w, h)
+        self.interpolation = interpolation
+
+    def set_size(self, image_size: List[int]):
+        self.target_width, self.target_height = image_size
+
+    def set_options(self, *, auto=None, scaleup=None, pad_color=None, stride=None):
+        # Included for API compatibility; no-op for direct resize.
+        return
+
+    def __call__(self, image: Image.Image, boxes):
+        if not isinstance(image, Image.Image):
+            image = Image.fromarray(np.asarray(image))
+
+        img_w, img_h = image.size
+        target_w, target_h = self.target_width, self.target_height
+        if target_w <= 0 or target_h <= 0:
+            raise ValueError("Target image size must be positive")
+
+        arr = np.asarray(image)
+        if arr.ndim == 2:
+            arr = np.stack([arr] * 3, axis=-1)
+        resized_arr = cv2.resize(arr, (target_w, target_h), interpolation=self.interpolation)
+        resized_image = Image.fromarray(resized_arr)
+
+        if boxes is None:
+            boxes_tensor = torch.zeros(0, 5, dtype=torch.float32)
+        elif isinstance(boxes, torch.Tensor):
+            boxes_tensor = boxes.clone()
+        else:
+            boxes_tensor = torch.as_tensor(boxes, dtype=torch.float32)
+
+        if boxes_tensor.numel() > 0:
+            boxes_tensor[:, [1, 3]] = boxes_tensor[:, [1, 3]] * img_w
+            boxes_tensor[:, [2, 4]] = boxes_tensor[:, [2, 4]] * img_h
+
+            boxes_tensor[:, [1, 3]] *= target_w / max(img_w, 1e-6)
+            boxes_tensor[:, [2, 4]] *= target_h / max(img_h, 1e-6)
+
+            boxes_tensor[:, [1, 3]] = boxes_tensor[:, [1, 3]].clamp(0, target_w)
+            boxes_tensor[:, [2, 4]] = boxes_tensor[:, [2, 4]].clamp(0, target_h)
+
+            boxes_tensor[:, [1, 3]] /= target_w
+            boxes_tensor[:, [2, 4]] /= target_h
+
+        ratio_x = target_w / max(img_w, 1e-6)
+        ratio_y = target_h / max(img_h, 1e-6)
+        transform_info = {
+            "ratio": (ratio_x, ratio_y),
+            "pad": (0.0, 0.0),
+            "size": (target_h, target_w),
+            "auto": False,
+            "scaleup": True,
+            "stride": 1,
+        }
+
+        return resized_image, boxes_tensor, transform_info
 
 
 class HorizontalFlip:
