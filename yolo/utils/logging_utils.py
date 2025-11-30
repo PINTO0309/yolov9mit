@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from PIL import Image
 import torch
 import wandb
 from lightning import LightningModule, Trainer, seed_everything
@@ -266,7 +267,7 @@ class ValidationImageSaver(Callback):
         super().__init__()
         self.max_images = max_images
         self.keep_epochs = keep_epochs
-        self._buffer: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._buffer: list[tuple[Union[str, Path], torch.Tensor]] = []
         self._version_dir: Optional[Path] = None
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
@@ -290,14 +291,15 @@ class ValidationImageSaver(Callback):
         if predicts is None:
             return
         batch_size, images, targets, rev_tensor, img_paths = batch
-        # Normalize predict container to an iterable per-sample
         predict_list = list(predicts) if isinstance(predicts, (list, tuple)) else [predicts]
-        for img, pred in zip(images, predict_list):
+
+        for idx, pred in enumerate(predict_list):
             if len(self._buffer) >= self.max_images:
                 break
             if not isinstance(pred, torch.Tensor):
                 continue
-            self._buffer.append((img.detach().cpu(), pred.detach().cpu()))
+            adj = self._unletterbox(pred, rev_tensor, idx)
+            self._buffer.append((img_paths[idx], adj.detach().cpu()))
 
     @rank_zero_only
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -308,9 +310,10 @@ class ValidationImageSaver(Callback):
         epoch_dir.mkdir(parents=True, exist_ok=True)
         idx2label = getattr(getattr(pl_module.cfg, "dataset", None), "class_list", None)
 
-        for idx, (img, pred) in enumerate(self._buffer[: self.max_images]):
+        for idx, (img_path, pred) in enumerate(self._buffer[: self.max_images]):
             try:
-                drawn = draw_bboxes(img, pred, idx2label=idx2label, fill=False, draw_labels=True)
+                with Image.open(img_path).convert("RGB") as img:
+                    drawn = draw_bboxes(img, pred, idx2label=idx2label, fill=False, draw_labels=True)
                 drawn.save(epoch_dir / f"val_{idx:02d}.png")
             except Exception as exc:
                 logger.warning(f":warning: Failed to save validation image {idx}: {exc}")
@@ -345,6 +348,32 @@ class ValidationImageSaver(Callback):
         if version is not None:
             fallback = fallback / f"version_{version}"
         return fallback
+
+    def _unletterbox(self, pred: torch.Tensor, rev_tensor, idx: int) -> torch.Tensor:
+        """
+        Map boxes back to the original image coordinate space using letterbox metadata.
+        """
+        if not isinstance(pred, torch.Tensor):
+            return pred
+        if rev_tensor is None:
+            return pred
+        try:
+            ratio = rev_tensor["ratio"][idx] if isinstance(rev_tensor, dict) else rev_tensor[idx, :2]
+            pad = rev_tensor["pad"][idx] if isinstance(rev_tensor, dict) else rev_tensor[idx, 2:4]
+        except Exception:
+            return pred
+
+        ratio = torch.as_tensor(ratio, dtype=pred.dtype, device=pred.device)
+        pad = torch.as_tensor(pad, dtype=pred.dtype, device=pred.device)
+        if ratio.numel() != 2 or pad.numel() != 2:
+            return pred
+
+        gains = torch.stack([ratio[0], ratio[1], ratio[0], ratio[1]])
+        shifts = torch.stack([pad[0], pad[1], pad[0], pad[1]])
+
+        adj = pred.clone()
+        adj[:, 1:5] = (adj[:, 1:5] - shifts) / gains
+        return adj
 
     def _prune_old_epochs(self, version_dir: Path) -> None:
         try:
