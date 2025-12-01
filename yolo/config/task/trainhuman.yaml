@@ -63,7 +63,8 @@ data:
     #   prob: 0.01
     #   factor_range: [0.8, 1.2]
 
-    RemoveOutliers: 1e-8
+    # Remove boxes smaller than ~3px on 64x64 inputs: (3/64)^2 ≈ 0.0022
+    RemoveOutliers: 0.0022
 
     # Albumentations-based: blur/noise/compression
     # Blur:
