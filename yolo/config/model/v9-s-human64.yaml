@@ -12,6 +12,7 @@ model:
         args: {out_channels: 64, kernel_size: 3, stride: 2}
     - ELAN:
         args: {out_channels: 64, part_channels: 64}
+        tags: B2
 
     - AConv:
         args: {out_channels: 128}
@@ -78,10 +79,21 @@ model:
             part_channels: 192
             csp_args: {repeat_num: 3}
         tags: P4
+    - UpSample:
+        args: {scale_factor: 2, mode: nearest}
+        source: P3
+    - Concat:
+        source: [-1, B2]
+    - RepNCSPELAN:
+        args:
+            out_channels: 96
+            part_channels: 96
+            csp_args: {repeat_num: 3}
+        tags: P2
 
   detection:
     - MultiheadDetection:
-        source: [P3, P4]
+        source: [P2, P3, P4]
         tags: Main
         output: True
 
@@ -115,7 +127,19 @@ model:
             csp_args: {repeat_num: 3}
         tags: A3
 
+    - UpSample:
+        args: {scale_factor: 2, mode: nearest}
+        source: A3
+    - Concat:
+        source: [-1, B2]
+    - RepNCSPELAN:
+        args:
+            out_channels: 96
+            part_channels: 96
+            csp_args: {repeat_num: 3}
+        tags: A2
+
     - MultiheadDetection:
-        source: [A3, A4]
+        source: [A2, A3, A4]
         tags: AUX
         output: True
